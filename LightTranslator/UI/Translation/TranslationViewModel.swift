@@ -4,10 +4,11 @@ import Foundation
 @MainActor
 final class TranslationViewModel: ObservableObject {
     @Published var sourceText = ""
-    @Published var translatedText = ""
+    @Published var translationResults: [ModelTranslationResult] = []
     @Published var sourceLanguage: LanguageOption
     @Published var targetLanguage: LanguageOption
     @Published var resolvedTargetLanguage: LanguageOption = .simplifiedChinese
+    @Published var selectedModel = TranslationModel.model(for: TranslationModel.defaultSelectedID)
     @Published var status: TranslationStatus = .idle
     @Published var copyMessage = ""
 
@@ -31,11 +32,13 @@ final class TranslationViewModel: ObservableObject {
         let settings = settingsStore.load()
         sourceLanguage = settings.defaultSourceLanguage
         targetLanguage = settings.defaultTargetLanguage
+        selectedModel = TranslationModel.model(for: settings.selectedModelID)
     }
 
     func prepareForOpen() {
         copyMessage = ""
         status = .editing
+        refreshSelectedModel()
 
         let readClipboard = settingsStore.load().readClipboardOnOpen
         guard readClipboard else {
@@ -45,7 +48,7 @@ final class TranslationViewModel: ObservableObject {
         let clipboardText = clipboardManager.readText().trimmingCharacters(in: .whitespacesAndNewlines)
         if !clipboardText.isEmpty {
             sourceText = clipboardText
-            translatedText = ""
+            translationResults = []
         }
     }
 
@@ -64,24 +67,29 @@ final class TranslationViewModel: ObservableObject {
             for: requestText,
             selectedTarget: targetLanguage
         )
+        refreshSelectedModel()
         resolvedTargetLanguage = target
         status = .translating
-        translatedText = ""
+        translationResults = []
         copyMessage = ""
 
         Task {
             do {
-                let result = try await translationService.translate(
+                let results = try await translationService.translate(
                     text: requestText,
                     sourceLanguage: sourceLanguage,
                     targetLanguage: target
                 )
-                translatedText = result
+                translationResults = results
                 status = .success
             } catch {
                 status = .failed(error.localizedDescription)
             }
         }
+    }
+
+    private func refreshSelectedModel() {
+        selectedModel = TranslationModel.model(for: settingsStore.load().selectedModelID)
     }
 
     func swapLanguages() {
@@ -108,8 +116,12 @@ final class TranslationViewModel: ObservableObject {
         copyMessage = ""
     }
 
-    func copyResult() {
-        let result = translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    func copyResult(modelID: String) {
+        let result = translationResults
+            .first { $0.modelID == modelID }?
+            .translatedText
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
         guard !result.isEmpty else {
             copyMessage = "暂无可复制的译文"
             return
@@ -119,8 +131,12 @@ final class TranslationViewModel: ObservableObject {
         copyMessage = "已复制"
     }
 
-    func speakResult() {
-        let result = translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    func speakResult(modelID: String) {
+        let result = translationResults
+            .first { $0.modelID == modelID }?
+            .translatedText
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
         guard !result.isEmpty else {
             return
         }

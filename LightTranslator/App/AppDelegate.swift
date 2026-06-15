@@ -3,11 +3,9 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = AppSettingsStore()
-    private let keychainStore = KeychainStore()
     private lazy var clipboardManager = ClipboardManager()
     private lazy var translationService = TranslationService(
-        settingsStore: settingsStore,
-        keychainStore: keychainStore
+        settingsStore: settingsStore
     )
     private lazy var translationWindowController = TranslationWindowController(
         viewModel: TranslationViewModel(
@@ -19,8 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private lazy var settingsWindowController = SettingsWindowController(
         viewModel: SettingsViewModel(
-            settingsStore: settingsStore,
-            keychainStore: keychainStore
+            settingsStore: settingsStore
         )
     )
     private lazy var menuBarController = MenuBarController(

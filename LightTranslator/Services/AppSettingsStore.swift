@@ -2,8 +2,9 @@ import Foundation
 
 final class AppSettingsStore {
     private enum Keys {
-        static let baseURL = "settings.baseURL"
-        static let modelName = "settings.modelName"
+        static let selectedModelID = "settings.selectedModelID"
+        static let legacyEnabledModelIDs = "settings.enabledModelIDs"
+        static let translationServiceBaseURL = "settings.translationServiceBaseURL"
         static let defaultSourceLanguage = "settings.defaultSourceLanguage"
         static let defaultTargetLanguage = "settings.defaultTargetLanguage"
         static let readClipboardOnOpen = "settings.readClipboardOnOpen"
@@ -21,18 +22,20 @@ final class AppSettingsStore {
 
     func load() -> AppSettings {
         AppSettings(
-            baseURL: defaults.string(forKey: Keys.baseURL) ?? AppSettings.defaults.baseURL,
-            modelName: defaults.string(forKey: Keys.modelName) ?? AppSettings.defaults.modelName,
+            selectedModelID: loadSelectedModelID(),
+            translationServiceBaseURL: defaults.string(forKey: Keys.translationServiceBaseURL)
+                ?? AppSettings.defaults.translationServiceBaseURL,
             defaultSourceLanguage: language(for: Keys.defaultSourceLanguage, fallback: .auto),
             defaultTargetLanguage: language(for: Keys.defaultTargetLanguage, fallback: .auto),
-            readClipboardOnOpen: defaults.object(forKey: Keys.readClipboardOnOpen) as? Bool ?? true,
+            readClipboardOnOpen: defaults.object(forKey: Keys.readClipboardOnOpen) as? Bool
+                ?? AppSettings.defaults.readClipboardOnOpen,
             hotkey: loadHotkey()
         )
     }
 
     func save(_ settings: AppSettings) {
-        defaults.set(settings.baseURL, forKey: Keys.baseURL)
-        defaults.set(settings.modelName, forKey: Keys.modelName)
+        defaults.set(settings.selectedModelID, forKey: Keys.selectedModelID)
+        defaults.set(settings.translationServiceBaseURL, forKey: Keys.translationServiceBaseURL)
         defaults.set(settings.defaultSourceLanguage.rawValue, forKey: Keys.defaultSourceLanguage)
         defaults.set(settings.defaultTargetLanguage.rawValue, forKey: Keys.defaultTargetLanguage)
         defaults.set(settings.readClipboardOnOpen, forKey: Keys.readClipboardOnOpen)
@@ -40,6 +43,20 @@ final class AppSettingsStore {
         defaults.set(Int(settings.hotkey.carbonModifiers), forKey: Keys.hotkeyModifiers)
         defaults.set(settings.hotkey.displayName, forKey: Keys.hotkeyDisplayName)
         defaults.set(settings.hotkey.enabled, forKey: Keys.hotkeyEnabled)
+    }
+
+    private func loadSelectedModelID() -> String {
+        if let modelID = defaults.string(forKey: Keys.selectedModelID),
+           TranslationModel.supported.contains(where: { $0.id == modelID }) {
+            return modelID
+        }
+
+        let legacyModelIDs = defaults.stringArray(forKey: Keys.legacyEnabledModelIDs) ?? []
+        if let migratedModelID = TranslationModel.supported.first(where: { legacyModelIDs.contains($0.id) })?.id {
+            return migratedModelID
+        }
+
+        return AppSettings.defaults.selectedModelID
     }
 
     private func language(for key: String, fallback: LanguageOption) -> LanguageOption {

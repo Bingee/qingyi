@@ -1,25 +1,19 @@
 import Foundation
 
 enum TranslationServiceError: LocalizedError {
-    case missingBaseURL
-    case missingAPIKey
-    case missingModel
-    case invalidBaseURL
+    case noSelectedModel
+    case invalidServiceBaseURL
     case invalidResponse
     case apiError(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingBaseURL:
-            return "请先在设置中填写 API Base URL。"
-        case .missingAPIKey:
-            return "请先在设置中填写 API Key。"
-        case .missingModel:
-            return "请先在设置中填写 Model Name。"
-        case .invalidBaseURL:
-            return "API Base URL 格式不正确。"
+        case .noSelectedModel:
+            return "请先在设置中选择一个翻译模型。"
+        case .invalidServiceBaseURL:
+            return "翻译服务地址格式不正确。"
         case .invalidResponse:
-            return "模型返回格式无法解析。"
+            return "翻译服务返回格式无法解析。"
         case .apiError(let message):
             return message
         }
@@ -29,16 +23,13 @@ enum TranslationServiceError: LocalizedError {
 @MainActor
 final class TranslationService {
     private let settingsStore: AppSettingsStore
-    private let keychainStore: KeychainStore
     private let urlSession: URLSession
 
     init(
         settingsStore: AppSettingsStore,
-        keychainStore: KeychainStore,
         urlSession: URLSession = .shared
     ) {
         self.settingsStore = settingsStore
-        self.keychainStore = keychainStore
         self.urlSession = urlSession
     }
 
@@ -46,41 +37,27 @@ final class TranslationService {
         text: String,
         sourceLanguage: LanguageOption,
         targetLanguage: LanguageOption
-    ) async throws -> String {
+    ) async throws -> [ModelTranslationResult] {
         let settings = settingsStore.load()
-        let apiKey = try keychainStore.loadAPIKey().trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseURLString = settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let modelName = settings.modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelID = settings.selectedModelID
 
-        guard !baseURLString.isEmpty else { throw TranslationServiceError.missingBaseURL }
-        guard !apiKey.isEmpty else { throw TranslationServiceError.missingAPIKey }
-        guard !modelName.isEmpty else { throw TranslationServiceError.missingModel }
-        guard let endpoint = makeChatCompletionsURL(from: baseURLString) else {
-            throw TranslationServiceError.invalidBaseURL
+        guard TranslationModel.supported.contains(where: { $0.id == modelID }) else {
+            throw TranslationServiceError.noSelectedModel
+        }
+
+        guard let endpoint = makeTranslationURL(from: settings.translationServiceBaseURL) else {
+            throw TranslationServiceError.invalidServiceBaseURL
         }
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(
-            ChatCompletionRequest(
-                model: modelName,
-                messages: [
-                    .init(
-                        role: "system",
-                        content: "You are a professional translation engine. Only return the translated text. Do not explain, quote, or add notes."
-                    ),
-                    .init(
-                        role: "user",
-                        content: makePrompt(
-                            text: text,
-                            sourceLanguage: sourceLanguage,
-                            targetLanguage: targetLanguage
-                        )
-                    )
-                ],
-                temperature: 0.2
+            TranslationBatchRequest(
+                text: text,
+                sourceLanguage: sourceLanguage.rawValue,
+                targetLanguage: targetLanguage.rawValue,
+                modelIds: [modelID]
             )
         )
 
@@ -90,21 +67,38 @@ final class TranslationService {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw TranslationServiceError.apiError(errorBody)
+            let decodedError = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            let message = decodedError?.message
+                ?? String(data: data, encoding: .utf8)
+                ?? "HTTP \(httpResponse.statusCode)"
+            throw TranslationServiceError.apiError(message)
         }
 
-        let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-        guard let content = decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines),
-              !content.isEmpty else {
-            throw TranslationServiceError.invalidResponse
-        }
+        let decoded = try JSONDecoder().decode(TranslationBatchResponse.self, from: data)
+        let resultsByModel = Dictionary(uniqueKeysWithValues: decoded.results.map { ($0.modelId, $0) })
 
-        return content
+        return [modelID].map { modelID in
+            guard let result = resultsByModel[modelID] else {
+                return ModelTranslationResult(
+                    modelID: modelID,
+                    translatedText: "",
+                    errorMessage: "服务未返回该模型的结果。",
+                    latencyMS: nil
+                )
+            }
+
+            return ModelTranslationResult(
+                modelID: result.modelId,
+                translatedText: result.text ?? "",
+                errorMessage: result.error,
+                latencyMS: result.latencyMs
+            )
+        }
     }
 
-    private func makeChatCompletionsURL(from baseURLString: String) -> URL? {
-        guard var components = URLComponents(string: baseURLString) else {
+    private func makeTranslationURL(from baseURLString: String) -> URL? {
+        let trimmed = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var components = URLComponents(string: trimmed) else {
             return nil
         }
 
@@ -113,56 +107,33 @@ final class TranslationService {
             path.removeLast()
         }
 
-        if path.hasSuffix("/v1") {
-            path += "/chat/completions"
-        } else if path.hasSuffix("/v1/chat/completions") {
-            // Keep complete compatible endpoints working.
-        } else {
-            path += "/v1/chat/completions"
+        if !path.hasSuffix("/api/translate") {
+            path += "/api/translate"
         }
 
         components.path = path
         return components.url
     }
-
-    private func makePrompt(
-        text: String,
-        sourceLanguage: LanguageOption,
-        targetLanguage: LanguageOption
-    ) -> String {
-        """
-        Translate the following text into \(targetLanguage.promptName).
-        Source language: \(sourceLanguage.promptName).
-
-        Requirements:
-        - Preserve meaning, tone, punctuation, and formatting.
-        - Return only the translated text.
-
-        Text:
-        \(text)
-        """
-    }
 }
 
-private struct ChatCompletionRequest: Encodable {
-    struct Message: Encodable {
-        let role: String
-        let content: String
-    }
-
-    let model: String
-    let messages: [Message]
-    let temperature: Double
+private struct TranslationBatchRequest: Encodable {
+    let text: String
+    let sourceLanguage: String
+    let targetLanguage: String
+    let modelIds: [String]
 }
 
-private struct ChatCompletionResponse: Decodable {
-    struct Choice: Decodable {
-        struct Message: Decodable {
-            let content: String
-        }
+private struct TranslationBatchResponse: Decodable {
+    let results: [TranslationResultDTO]
+}
 
-        let message: Message
-    }
+private struct TranslationResultDTO: Decodable {
+    let modelId: String
+    let text: String?
+    let error: String?
+    let latencyMs: Int?
+}
 
-    let choices: [Choice]
+private struct APIErrorResponse: Decodable {
+    let message: String?
 }

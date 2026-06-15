@@ -26,6 +26,7 @@
 		AB233734EA80380F36EAAE23 /* GlobalHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA2C0558DB470AE80B469D /* GlobalHotkeyManager.swift */; };
 		ADEEBAA503A54A1CE2A1E9FC /* HotkeyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C4942A84D754187881ED8E3 /* HotkeyConfig.swift */; };
 		BC6B40A30492557E5CAA7859 /* LanguageOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85E17F92ADB547E93D00EB5 /* LanguageOption.swift */; };
+		CEFF906BBC3C2B1C08BF3235 /* TranslationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4BF8FAFECFF0DE10C82B69 /* TranslationModel.swift */; };
 		D2AC840FF10C6EA33812E86D /* AppNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F651038468E7647E935921 /* AppNotifications.swift */; };
 		E589EA67A9B20CDCB09726C0 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86942081E23C7DF097EEBF22 /* AppDelegate.swift */; };
 		F4E5BAB46195D5A4D44CC12F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342AB86A04772E2AEE7228B6 /* AppSettings.swift */; };
@@ -38,6 +39,7 @@
 		13B0E5FE1780D9C59E065D42 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
 		2A8BF9803D54395FC3A0EDE2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		2A982B037302A6213FF410D6 /* TranslationStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationStatus.swift; sourceTree = "<group>"; };
+		2B4BF8FAFECFF0DE10C82B69 /* TranslationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationModel.swift; sourceTree = "<group>"; };
 		2F797EE2BB630AC2AA8FE35E /* TranslationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationView.swift; sourceTree = "<group>"; };
 		342AB86A04772E2AEE7228B6 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		368EF73D5893C932CE425E0D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				342AB86A04772E2AEE7228B6 /* AppSettings.swift */,
 				7C4942A84D754187881ED8E3 /* HotkeyConfig.swift */,
 				E85E17F92ADB547E93D00EB5 /* LanguageOption.swift */,
+				2B4BF8FAFECFF0DE10C82B69 /* TranslationModel.swift */,
 				2A982B037302A6213FF410D6 /* TranslationStatus.swift */,
 			);
 			path = Core;
@@ -262,6 +265,7 @@
 				A5EB43A4E2C5DBEA18CD28FB /* SettingsViewModel.swift in Sources */,
 				80F27163355276B3C2FDA755 /* SettingsWindowController.swift in Sources */,
 				956D2D6797510DF439878392 /* TextInputView.swift in Sources */,
+				CEFF906BBC3C2B1C08BF3235 /* TranslationModel.swift in Sources */,
 				5DDD832B30B3180D77BF8F83 /* TranslationService.swift in Sources */,
 				31012095FD240989E374F951 /* TranslationStatus.swift in Sources */,
 				F6C1754376FBAB97EA76B6B8 /* TranslationView.swift in Sources */,

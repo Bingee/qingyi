@@ -8,6 +8,7 @@ struct TranslationView: View {
     let onClose: () -> Void
     var onPreferredSizeChange: (CGSize) -> Void = { _ in }
     @State private var inputHasVisibleContent = false
+    @State private var isResultCollapsed = false
 
     private let panelWidth: CGFloat = 368
     private let collapsedHeight: CGFloat = 256
@@ -38,10 +39,14 @@ struct TranslationView: View {
         .onChange(of: hasExpandedOutput) { _, _ in
             onPreferredSizeChange(preferredSize)
         }
-        .onChange(of: resultText) { _, _ in
+        .onChange(of: viewModel.translationResults) { _, _ in
+            if hasResultOutput {
+                isResultCollapsed = false
+            }
             onPreferredSizeChange(preferredSize)
         }
         .onChange(of: viewModel.sourceText) { _, _ in
+            isResultCollapsed = false
             viewModel.markEditing()
         }
     }
@@ -155,7 +160,7 @@ struct TranslationView: View {
                 .foregroundStyle(primaryTextColor)
                 .frame(width: 16, height: 16)
 
-            Text("翻译结果")
+            Text("\(viewModel.selectedModel.displayName) 翻译")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(primaryTextColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,7 +172,7 @@ struct TranslationView: View {
             }
 
             Button {
-                viewModel.collapseResult()
+                isResultCollapsed.toggle()
             } label: {
                 Image(systemName: hasExpandedOutput ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11, weight: .bold))
@@ -175,8 +180,8 @@ struct TranslationView: View {
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.plain)
-            .disabled(!hasExpandedOutput || viewModel.status.isTranslating)
-            .help(hasExpandedOutput ? "收起结果" : "翻译结果")
+            .disabled(!hasResultOutput || viewModel.status.isTranslating)
+            .help(hasExpandedOutput ? "收起结果" : "展开结果")
         }
         .frame(height: 20)
     }
@@ -184,7 +189,7 @@ struct TranslationView: View {
     private var resultActions: some View {
         HStack(spacing: 8) {
             Button {
-                viewModel.copyResult()
+                viewModel.copyResult(modelID: resultModelID)
             } label: {
                 Image("CopyIcon")
                     .renderingMode(.template)
@@ -194,11 +199,11 @@ struct TranslationView: View {
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!canUseResult)
             .help("复制译文")
 
             Button {
-                viewModel.speakResult()
+                viewModel.speakResult(modelID: resultModelID)
             } label: {
                 Image("SpeakerIcon")
                     .renderingMode(.template)
@@ -208,7 +213,7 @@ struct TranslationView: View {
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!canUseResult)
             .help("朗读")
 
             if !viewModel.copyMessage.isEmpty {
@@ -228,10 +233,22 @@ struct TranslationView: View {
         case .translating:
             return "正在翻译..."
         case .success:
-            return viewModel.translatedText
+            return activeResult?.errorMessage ?? activeResult?.translatedText ?? "翻译服务未返回结果。"
         case .failed(let message):
             return message
         }
+    }
+
+    private var activeResult: ModelTranslationResult? {
+        viewModel.translationResults.first
+    }
+
+    private var resultModelID: String {
+        activeResult?.modelID ?? viewModel.selectedModel.id
+    }
+
+    private var canUseResult: Bool {
+        activeResult?.errorMessage == nil && activeResult?.hasText == true
     }
 
     private var sourceLanguageTitle: String {
@@ -242,13 +259,17 @@ struct TranslationView: View {
         viewModel.targetLanguage == .auto ? "自动选择" : viewModel.targetLanguage.displayName
     }
 
-    private var hasExpandedOutput: Bool {
+    private var hasResultOutput: Bool {
         switch viewModel.status {
         case .translating, .success, .failed:
             return true
         case .idle, .editing:
             return false
         }
+    }
+
+    private var hasExpandedOutput: Bool {
+        hasResultOutput && !isResultCollapsed
     }
 
     private var preferredSize: CGSize {
@@ -325,6 +346,9 @@ struct TranslationView: View {
 
     private var resultForegroundStyle: Color {
         if case .failed = viewModel.status {
+            return .red
+        }
+        if activeResult?.errorMessage != nil {
             return .red
         }
         return primaryTextColor
