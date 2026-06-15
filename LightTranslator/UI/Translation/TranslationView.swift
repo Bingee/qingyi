@@ -1,0 +1,415 @@
+import AppKit
+import SwiftUI
+
+struct TranslationView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    @ObservedObject var viewModel: TranslationViewModel
+    let onClose: () -> Void
+    var onPreferredSizeChange: (CGSize) -> Void = { _ in }
+    @State private var inputHasVisibleContent = false
+
+    private let panelWidth: CGFloat = 368
+    private let collapsedHeight: CGFloat = 256
+    private let minExpandedTranslationBlockHeight: CGFloat = 98
+    private let maxExpandedTranslationBlockHeight: CGFloat = 220
+
+    var body: some View {
+        VStack(spacing: 12) {
+            inputBlock
+            languageBar
+            translationBlock
+        }
+        .padding(16)
+        .frame(width: panelWidth, height: preferredSize.height)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(surfaceColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(borderColor, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onAppear {
+            onPreferredSizeChange(preferredSize)
+        }
+        .onChange(of: hasExpandedOutput) { _, _ in
+            onPreferredSizeChange(preferredSize)
+        }
+        .onChange(of: resultText) { _, _ in
+            onPreferredSizeChange(preferredSize)
+        }
+        .onChange(of: viewModel.sourceText) { _, _ in
+            viewModel.markEditing()
+        }
+    }
+
+    private var inputBlock: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(blockColor)
+
+            TextInputView(
+                text: $viewModel.sourceText,
+                hasVisibleContent: $inputHasVisibleContent,
+                onSubmit: viewModel.translate,
+                onCancel: onClose,
+                fontSize: 16,
+                textColor: inputTextColor,
+                insertionPointColor: showsEmptyPlaceholder ? .clear : .systemBlue
+            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            if showsEmptyPlaceholder {
+                HStack(alignment: .center, spacing: 4) {
+                    BlinkingInsertionCursor()
+
+                    Text("请粘贴要翻译的文字")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(placeholderColor)
+                }
+                .padding(.leading, 12)
+                .padding(.top, 10)
+                .allowsHitTesting(false)
+            }
+        }
+        .frame(height: 112)
+    }
+
+    private var showsEmptyPlaceholder: Bool {
+        viewModel.sourceText.isEmpty && !inputHasVisibleContent
+    }
+
+    private var languageBar: some View {
+        HStack(spacing: 0) {
+            LanguageMenu(
+                title: sourceLanguageTitle,
+                selection: $viewModel.sourceLanguage,
+                tint: primaryTextColor
+            )
+            .frame(maxWidth: .infinity)
+
+            Button {
+                viewModel.swapLanguages()
+            } label: {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(primaryTextColor)
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .help("互换语言")
+            .frame(maxWidth: .infinity)
+
+            LanguageMenu(
+                title: targetLanguageTitle,
+                selection: $viewModel.targetLanguage,
+                tint: primaryTextColor
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .frame(height: 44)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(blockColor)
+        )
+    }
+
+    private var translationBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            translationHeader
+
+            if hasExpandedOutput {
+                ScrollView(.vertical) {
+                    Text(resultText)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(resultForegroundStyle)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .frame(height: resultTextViewportHeight, alignment: .topLeading)
+                .frame(maxWidth: .infinity)
+
+                resultActions
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(height: translationBlockHeight, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(blockColor)
+        )
+    }
+
+    private var translationHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(primaryTextColor)
+                .frame(width: 16, height: 16)
+
+            Text("翻译结果")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(primaryTextColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if viewModel.status.isTranslating {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.72)
+            }
+
+            Button {
+                viewModel.collapseResult()
+            } label: {
+                Image(systemName: hasExpandedOutput ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(primaryTextColor)
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasExpandedOutput || viewModel.status.isTranslating)
+            .help(hasExpandedOutput ? "收起结果" : "翻译结果")
+        }
+        .frame(height: 20)
+    }
+
+    private var resultActions: some View {
+        HStack(spacing: 8) {
+            Button {
+                viewModel.copyResult()
+            } label: {
+                Image("CopyIcon")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(primaryTextColor)
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("复制译文")
+
+            Button {
+                viewModel.speakResult()
+            } label: {
+                Image("SpeakerIcon")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(primaryTextColor)
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("朗读")
+
+            if !viewModel.copyMessage.isEmpty {
+                Text(viewModel.copyMessage)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+            }
+        }
+        .frame(height: 16)
+    }
+
+    private var resultText: String {
+        switch viewModel.status {
+        case .idle, .editing:
+            return ""
+        case .translating:
+            return "正在翻译..."
+        case .success:
+            return viewModel.translatedText
+        case .failed(let message):
+            return message
+        }
+    }
+
+    private var sourceLanguageTitle: String {
+        viewModel.sourceLanguage == .auto ? "自动检测" : viewModel.sourceLanguage.displayName
+    }
+
+    private var targetLanguageTitle: String {
+        viewModel.targetLanguage == .auto ? "自动选择" : viewModel.targetLanguage.displayName
+    }
+
+    private var hasExpandedOutput: Bool {
+        switch viewModel.status {
+        case .translating, .success, .failed:
+            return true
+        case .idle, .editing:
+            return false
+        }
+    }
+
+    private var preferredSize: CGSize {
+        let expandedHeight = collapsedHeight - 44 + translationBlockHeight
+        return CGSize(width: panelWidth, height: hasExpandedOutput ? expandedHeight : collapsedHeight)
+    }
+
+    private var translationBlockHeight: CGFloat {
+        guard hasExpandedOutput else {
+            return 44
+        }
+
+        let totalHeight = 12 + 20 + 8 + resultTextViewportHeight + 8 + 16 + 12
+        return min(max(totalHeight, minExpandedTranslationBlockHeight), maxExpandedTranslationBlockHeight)
+    }
+
+    private var resultTextViewportHeight: CGFloat {
+        let maxTextHeight = maxExpandedTranslationBlockHeight - 12 - 20 - 8 - 8 - 16 - 12
+        return min(measuredResultTextHeight(), maxTextHeight)
+    }
+
+    private func measuredResultTextHeight() -> CGFloat {
+        let text = resultText.isEmpty ? " " : resultText
+        let availableWidth = panelWidth - 32 - 32
+        let font = NSFont.systemFont(ofSize: 16, weight: .medium)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+
+        let rect = (text as NSString).boundingRect(
+            with: NSSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraphStyle
+            ]
+        )
+
+        return max(22, ceil(rect.height))
+    }
+
+    private var surfaceColor: Color {
+        colorScheme == .dark
+            ? Color(red: 24 / 255, green: 24 / 255, blue: 26 / 255).opacity(0.96)
+            : Color.white.opacity(0.96)
+    }
+
+    private var blockColor: Color {
+        colorScheme == .dark
+            ? Color(red: 44 / 255, green: 44 / 255, blue: 46 / 255)
+            : Color(red: 231 / 255, green: 231 / 255, blue: 231 / 255)
+    }
+
+    private var borderColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
+    }
+
+    private var primaryTextColor: Color {
+        colorScheme == .dark
+            ? Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255)
+            : Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255)
+    }
+
+    private var placeholderColor: Color {
+        colorScheme == .dark
+            ? Color(red: 99 / 255, green: 99 / 255, blue: 102 / 255)
+            : Color(red: 189 / 255, green: 189 / 255, blue: 189 / 255)
+    }
+
+    private var inputTextColor: NSColor {
+        colorScheme == .dark
+            ? NSColor(calibratedRed: 235 / 255, green: 235 / 255, blue: 245 / 255, alpha: 1)
+            : NSColor(calibratedRed: 51 / 255, green: 51 / 255, blue: 51 / 255, alpha: 1)
+    }
+
+    private var resultForegroundStyle: Color {
+        if case .failed = viewModel.status {
+            return .red
+        }
+        return primaryTextColor
+    }
+}
+
+private struct BlinkingInsertionCursor: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isVisible = true
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 1, style: .continuous)
+            .fill(Color(nsColor: .systemBlue))
+            .frame(width: 2, height: 20)
+            .opacity(isVisible ? 1 : 0)
+            .onAppear {
+                guard !reduceMotion else {
+                    isVisible = true
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) {
+                    isVisible = false
+                }
+            }
+            .onChange(of: reduceMotion) { _, newValue in
+                if newValue {
+                    isVisible = true
+                }
+            }
+    }
+}
+
+private struct LanguageMenu: View {
+    let title: String
+    @Binding var selection: LanguageOption
+    let tint: Color
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+
+                Image(systemName: isPresented ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: 88, height: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(LanguageOption.allCases) { language in
+                    Button {
+                        selection = language
+                        isPresented = false
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(language.displayName)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(tint)
+
+                            Spacer(minLength: 12)
+
+                            if selection == language {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(tint)
+                            }
+                        }
+                        .frame(width: 112, height: 28)
+                        .padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+        }
+    }
+}
