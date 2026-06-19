@@ -1,738 +1,902 @@
-# 轻译二期商业化方案
+# 轻译开源翻译能力落地方案
 
 ## 1. 目标
 
-二期目标是把轻译从“本地自用工具”升级为可商业化的订阅制产品。
+轻译后续不再走订阅、支付、账号、后台审核路线。
 
-核心方向：
+新的产品定位：
 
-- 用户在 App 内查看订阅方案
-- 用户点击购买后跳转官网
-- 官网展示微信 / 支付宝收款二维码
-- 用户付款后提交付款信息
-- 后台人工确认并开通订阅
-- 客户端登录账号后同步订阅状态
-- 订阅用户通过后端 AI 代理完成翻译
-- 支持多个翻译模型切换和共同使用
+- 做成清爽、开源、可本地使用的 macOS 菜单栏翻译工具
+- 默认翻译工具使用服务端托管的火山翻译
+- 火山翻译每月按 200 万字符免费额度作为服务端全局上限
+- GPT、DeepSeek-V4、Gemini-3.5 不再走作者代理，用户自行填写 API Key / Base URL / Model ID
+- 用户配置成功后启用对应模型
+- API Key 只保存在用户本机 Keychain
+- 非敏感设置保存在 UserDefaults
 
-本阶段暂不接入 Stripe、Paddle、微信支付商户号、支付宝开放平台等自动支付系统。
+这意味着原来的商业化链路全部取消：
 
-## 2. 产品形态
+- 不做账号登录
+- 不做订阅套餐
+- 不做支付
+- 不做飞书 Webhook
+- 不做网站后台
+- 不做服务器数据库
+- 不做服务端订阅鉴权
 
-### 订阅方案
+关键边界：
 
-初始套餐：
+- 火山翻译由服务端代理调用，客户端不接触火山 AK/SK。
+- 服务端保存火山 AK/SK，并做自然月全局字符统计。
+- 火山后台可用于查看用量和费用，但不应作为精确的“超过 200 万字符立即停止服务”的唯一手段。
+- 当前代码已把火山翻译切到服务端 `/api/translate`，超过服务端配置的月额度后停止继续请求火山。
 
-| 套餐 | 价格 | 周期 |
-| --- | --- | --- |
-| 月付 | ¥6.6 | 1 个月 |
-| 半年 | ¥29 | 6 个月 |
-| 年付 | ¥49 | 12 个月 |
+当前的 `server/` 是火山默认翻译入口；GPT、DeepSeek-V4、Gemini-3.5 仍由 App 直接调用用户配置的 OpenAI-compatible Provider。
 
-建议每个套餐都绑定用量额度，避免 AI 成本失控。
+## 2. 当前代码状态
 
-示例：
-
-| 套餐 | 建议额度 |
-| --- | --- |
-| 月付 | 每月 50 万字符 |
-| 半年 | 每月 80 万字符 |
-| 年付 | 每月 100 万字符 |
-
-额度可以按字符数、token 数或请求次数统计。MVP 建议先按字符数统计，简单直观。
-
-### 模型策略
-
-支持多个模型，但需要按成本分层。
-
-示例：
-
-| 模型类型 | 说明 | 额度倍率 |
-| --- | --- | --- |
-| 快速模型 | 默认翻译，成本低，速度快 | 1x |
-| 高质量模型 | 长文本、正式表达、复杂语境 | 2x 或 3x |
-| 备用模型 | 主模型失败时兜底 | 1x 或按实际成本 |
-
-客户端可以展示模型选择入口，但模型 API Key 必须只保存在后端。
-
-## 3. 账号体系
-
-### 登录方式
-
-采用邮箱 + 密码。
-
-原因：
-
-- 用户理解成本低
-- 方便和付款记录绑定
-- 不依赖邮件验证码实时送达
-- 适合后续扩展账号中心、设备管理、订阅管理
-
-### 账号功能
-
-客户端需要支持：
-
-- 注册
-- 登录
-- 退出登录
-- 自动登录
-- 查看当前邮箱
-- 查看订阅状态
-- 查看到期时间
-- 查看剩余额度
-
-二期可暂不做：
-
-- 第三方登录
-- 手机号登录
-- 多团队账号
-- 复杂账号资料
-- 自助注销
-
-### 密码规则
-
-建议规则：
-
-- 最少 8 位
-- 允许数字、字母、符号
-- 后端使用强哈希存储，例如 Argon2id 或 bcrypt
-- 不保存明文密码
-- 登录失败需要限流
-
-### 忘记密码
-
-二期建议支持最小闭环：
-
-```text
-用户输入邮箱
--> 后端发送重置密码链接
--> 用户打开网页设置新密码
-```
-
-如果要更快上线，可以先人工处理忘记密码，但不建议长期这样做。
-
-## 4. 支付流程
-
-### 前期支付方式
-
-使用个人微信 / 支付宝收款二维码。
-
-流程：
-
-```text
-App 内点击购买
--> 跳转官网订阅页
--> 用户选择套餐
--> 用户扫码付款
--> 用户提交付款信息
--> 后台人工审核
--> 审核通过后开通订阅
--> App 刷新订阅状态
-```
-
-### 官网订阅页
-
-页面需要包含：
-
-- 套餐价格
-- 套餐权益
-- 微信收款二维码
-- 支付宝收款二维码
-- 付款备注说明
-- 付款后提交表单入口
-
-付款备注建议：
-
-```text
-轻译 + 注册邮箱
-```
-
-例如：
-
-```text
-轻译 user@example.com
-```
-
-### 付款提交表单
-
-用户付款后提交：
-
-- 注册邮箱
-- 选择套餐
-- 付款方式：微信 / 支付宝
-- 付款金额
-- 付款时间
-- 付款备注
-- 付款截图，可选但建议提供
-
-提交后进入待审核状态。
-
-## 5. 后台管理
-
-需要一个极简 admin 后台。
-
-### 后台功能
-
-必须有：
-
-- 登录后台
-- 查看待审核付款
-- 查看用户邮箱
-- 查看付款金额
-- 查看套餐
-- 查看付款截图
-- 审核通过
-- 审核拒绝
-- 手动调整订阅到期时间
-- 查看用户当前订阅状态
-- 查看用户用量
-
-后续可加：
-
-- 搜索用户
-- 订阅延期
-- 封禁用户
-- 退款备注
-- 操作日志
-
-### 审核通过逻辑
-
-审核通过后：
-
-```text
-如果用户没有订阅：
-  创建 active subscription
-
-如果用户已有未过期订阅：
-  在当前 expires_at 基础上顺延
-
-如果用户订阅已过期：
-  从当前时间开始计算新周期
-```
-
-## 6. 后端服务
-
-### 后端职责
-
-后端是订阅状态和 AI 调用的唯一可信入口。
-
-负责：
-
-- 用户注册 / 登录
-- 密码哈希
-- session / token 管理
-- 订阅状态管理
-- 付款审核
-- 用量统计
-- 模型路由
-- AI API Key 管理
-- 限流和防滥用
-- 翻译请求代理
-
-客户端不应内置你的大模型 API Key。
-
-### 推荐接口
-
-账号：
-
-```text
-POST /auth/register
-POST /auth/login
-POST /auth/logout
-POST /auth/refresh
-POST /auth/forgot-password
-POST /auth/reset-password
-GET  /me
-```
-
-订阅：
-
-```text
-GET  /plans
-GET  /subscription
-POST /manual-payment-claims
-GET  /usage
-```
-
-翻译：
-
-```text
-GET  /models
-POST /translate
-```
-
-后台：
-
-```text
-GET  /admin/payment-claims
-POST /admin/payment-claims/:id/approve
-POST /admin/payment-claims/:id/reject
-GET  /admin/users
-PATCH /admin/users/:id/subscription
-```
-
-## 7. 数据模型
-
-### users
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | UUID | 用户 ID |
-| email | String | 邮箱，唯一 |
-| password_hash | String | 密码哈希 |
-| created_at | Date | 创建时间 |
-| last_login_at | Date? | 最近登录时间 |
-| status | String | active / disabled |
-
-### sessions
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | UUID | session ID |
-| user_id | UUID | 用户 ID |
-| refresh_token_hash | String | refresh token 哈希 |
-| expires_at | Date | 过期时间 |
-| revoked_at | Date? | 注销时间 |
-| created_at | Date | 创建时间 |
-
-### plans
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | String | monthly / half_year / yearly |
-| name | String | 套餐名 |
-| price_cny | Decimal | 人民币价格 |
-| duration_days | Int | 有效天数 |
-| monthly_quota_chars | Int | 每月额度 |
-| enabled | Bool | 是否展示 |
-
-### subscriptions
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | UUID | 订阅 ID |
-| user_id | UUID | 用户 ID |
-| plan_id | String | 套餐 ID |
-| status | String | active / expired / canceled |
-| starts_at | Date | 开始时间 |
-| expires_at | Date | 到期时间 |
-| created_at | Date | 创建时间 |
-| updated_at | Date | 更新时间 |
-
-### manual_payment_claims
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | UUID | 付款申报 ID |
-| user_id | UUID | 用户 ID |
-| plan_id | String | 套餐 ID |
-| payment_method | String | wechat / alipay |
-| amount_cny | Decimal | 付款金额 |
-| paid_at | Date? | 用户填写的付款时间 |
-| note | String? | 付款备注 |
-| screenshot_url | String? | 截图 |
-| status | String | pending / approved / rejected |
-| reviewed_at | Date? | 审核时间 |
-| reviewed_by | UUID? | 审核人 |
-| created_at | Date | 创建时间 |
-
-### usage_records
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | UUID | 用量记录 ID |
-| user_id | UUID | 用户 ID |
-| model_id | String | 使用模型 |
-| source_chars | Int | 原文字数 |
-| billed_chars | Int | 计费用量 |
-| created_at | Date | 创建时间 |
-
-### model_configs
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | String | 模型 ID |
-| display_name | String | 展示名称 |
-| provider | String | 供应商 |
-| model_name | String | 实际模型名 |
-| cost_multiplier | Int | 额度倍率 |
-| enabled | Bool | 是否可用 |
-
-## 8. 客户端改造
-
-### 需要新增页面
-
-- 登录页
-- 注册页
-- 订阅方案页
-- 账号状态页
-- 用量展示
-- 模型选择
-
-### 设置页改造
-
-设置页需要区分两种模式：
-
-1. 订阅模式
-   - 用户登录账号
-   - 使用后端提供的模型
-   - 不需要填写 API Key
-
-2. 自带 Key 模式
-   - 用户填写 Base URL / API Key / Model
-   - 适合高级用户
-   - 可作为 Pro 或高级设置保留
-
-建议默认展示订阅模式，自带 Key 模式折叠到高级设置。
-
-### Token 存储
-
-客户端登录后：
-
-- access token 可以短期内存
-- refresh token 存 macOS Keychain
-- 不把 token 明文写入 UserDefaults
-
-## 9. AI 代理与用量控制
-
-### 翻译请求流程
-
-```text
-App 发起 /translate
--> 后端校验 access token
--> 查询订阅状态
--> 查询剩余额度
--> 根据用户选择模型计算倍率
--> 调用对应 AI Provider
--> 记录 usage_records
--> 返回译文
-```
-
-### 用量规则
-
-建议：
-
-- 每次按原文字符数计量
-- 高级模型按倍率扣除
-- 每月重置额度
-- 超额后提示升级或等待下月
-
-示例：
-
-```text
-原文 1000 字
-快速模型 1x：扣 1000
-高质量模型 3x：扣 3000
-```
-
-## 10. 安全与风控
-
-必须注意：
-
-- 后端保存大模型 API Key，客户端不保存
-- 所有订阅状态以后端为准
-- 客户端本地缓存只用于展示，不能作为最终授权依据
-- 登录接口限流
-- 翻译接口限流
-- 单用户每日请求上限
-- 单 IP 请求上限
-- 密码使用强哈希
-- 后台操作需要管理员权限
-
-## 11. 开发顺序
-
-### Phase 2.1：账号和订阅基础
-
-- 后端用户注册 / 登录
-- 客户端登录页
-- token 存 Keychain
-- 订阅状态接口
-- App 内展示订阅方案
-
-### Phase 2.2：人工收款流程
-
-- 官网订阅页
-- 微信 / 支付宝二维码展示
-- 付款申报表单
-- 后台付款审核
-- 审核通过后开通订阅
-
-### Phase 2.3：AI 代理翻译
-
-- 后端 `/translate`
-- 模型配置
-- 用量统计
-- 订阅校验
-- 客户端切换到云端翻译模式
-
-### Phase 2.4：多模型与额度
-
-- 模型列表接口
-- 客户端模型选择
-- 不同模型倍率
-- 用量展示
-- 超额提示
-
-## 12. 当前不做
-
-二期暂不做：
-
-- App Store 内购
-- Stripe / Paddle 自动订阅
-- 微信支付商户号
-- 支付宝开放平台
-- 企业团队版
-- 发票系统
-- 自动退款
-- 复杂 CRM
-
-## 13. 完成定义
-
-二期 MVP 完成标准：
-
-```text
-用户注册登录
--> 在 App 内看到套餐
--> 跳官网扫码付款
--> 提交付款信息
--> 后台人工审核通过
--> App 同步订阅状态
--> 订阅用户通过后端代理完成翻译
--> 后端记录用量并支持模型切换
-```
-
-## 14. 当前项目上下文
-
-### 项目路径
-
-本地项目路径：
-
-```text
-/Users/a1234/Documents/轻译
-```
-
-### 技术栈
+### 已具备
 
 - macOS SwiftUI / AppKit 菜单栏 App
-- 使用 XcodeGen 生成 `LightTranslator.xcodeproj`
-- 本地 AI 代理服务为 Node.js 20 原生 `http` 服务
-- 客户端不保存上游大模型 API Key，只请求本地或后端代理
-- Node 代理服务调用 APIMart OpenAI-compatible `/v1/chat/completions`
+- 无 Dock 图标
+- 全局快捷键唤起翻译浮窗
+- 翻译浮窗输入、语言选择、Enter 翻译、结果展示
+- 复制译文
+- 朗读译文
+- 打开浮窗时读取剪贴板文本
+- 设置页操作即保存
+- 设置页已有模型单选 UI
+- 翻译结果标题显示当前模型名，例如 `GPT 翻译`
+- `KeychainStore.swift` 已有多 Provider Keychain 读写能力
+- 服务端已接入火山翻译文本翻译 API
+- 已接入 OpenAI-compatible `/v1/chat/completions` 客户端
+- 火山翻译已作为默认模型
+- 火山翻译已走服务端代理
+- 火山翻译已做服务端每月 200 万字符用量拦截
+- GPT、DeepSeek-V4、Gemini-3.5 已切换为用户自填 API Key / Base URL / Model ID
+- 当前本地代理支持 `GET /health`、`GET /api/models`、`POST /api/translate`
 
-### 本地运行和构建
+### 需要调整
 
-生成 Xcode 工程：
+- 需要增加 API 信息验证按钮，目前是保存后翻译时验证
+- Gemini 当前按 OpenAI-compatible 配置处理；如果直接接 Google Gemini 官方 API，需要单独实现 Gemini 协议
+- 需要把旧的 `translationServiceBaseURL` 本地代理配置继续降级为历史兼容字段
+
+## 3. 新产品形态
+
+### 设置页结构
+
+设置页保留当前“翻译模型”区域，但改成“翻译引擎”或“模型服务”。
+
+每个翻译引擎提供：
+
+- 启用开关
+- API Key 输入框
+- 验证并启用按钮
+- 验证状态
+- 可选 Base URL
+- 可选 Model ID
+- 简短说明
+- 获取 API Key 的官方链接
+
+默认状态：
+
+- 火山翻译为默认开启项
+- 客户端不写死任何真实 AK/SK
+- 客户端不展示火山 AK/SK 输入
+- GPT、DeepSeek-V4、Gemini-3.5 默认不带 API Key
+- GPT、DeepSeek-V4、Gemini-3.5 必须由用户填写 API Key / Base URL / Model ID 后才能翻译
+- 未配置成功的 Provider 不参与翻译
+
+### 翻译流程
+
+```text
+用户打开设置
+-> 选择一个 Provider
+-> 填写 API Key / Base URL / Model ID
+-> 点击验证并启用
+-> App 发起一次短文本测试请求
+-> 验证成功后把 API Key 存入 Keychain
+-> 非敏感配置写入 UserDefaults
+-> 用户回到翻译浮窗
+-> App 直接调用该 Provider 翻译
+```
+
+### 错误状态
+
+必须明确展示：
+
+- 未配置 API Key
+- API Key 验证失败
+- 模型 ID 不可用
+- Base URL 无效
+- Provider 限流
+- Provider 余额不足或免费额度耗尽
+- 网络不可用
+- 返回格式无法解析
+
+## 4. Provider 设计
+
+### ProviderKind
+
+建议定义 Provider 类型：
+
+```swift
+enum TranslationProviderKind: String, Codable, CaseIterable {
+    case volcengineTranslate
+    case openAICompatible
+    case gemini
+    case azureTranslator
+    case libreTranslate
+    case myMemory
+}
+```
+
+### ProviderConfig
+
+非敏感配置建议存在 UserDefaults：
+
+```swift
+struct TranslationProviderConfig: Codable, Identifiable, Equatable {
+    let id: String
+    var displayName: String
+    var kind: TranslationProviderKind
+    var isEnabled: Bool
+    var baseURL: String
+    var modelID: String
+    var apiKeyStorageAccount: String
+    var description: String
+    var helpURL: String?
+}
+```
+
+API Key 不进入这个结构体，只通过 `apiKeyStorageAccount` 到 Keychain 读取。
+
+### Keychain 存储
+
+建议把 `KeychainStore` 改成通用密钥存储：
+
+```swift
+final class KeychainStore {
+    func saveSecret(_ value: String, account: String) throws
+    func loadSecret(account: String) throws -> String
+    func deleteSecret(account: String) throws
+}
+```
+
+建议 service：
+
+```text
+com.local.light-translator.provider-key
+```
+
+建议 account 命名：
+
+```text
+provider.gpt.apiKey
+provider.deepseek.apiKey
+provider.gemini.apiKey
+provider.deepl.apiKey
+provider.openrouter.apiKey
+provider.azure.apiKey
+```
+
+安全要求：
+
+- API Key 只存 Keychain
+- UserDefaults 只存 Provider、Base URL、Model ID、启用状态
+- 日志中不能打印 API Key
+- UI 中展示时只显示掩码，例如 `sk-...abcd`
+- 删除 Provider 或关闭启用时，提供“删除本机密钥”操作
+
+## 5. 内置 Provider 建议
+
+### 第一批必须落地
+
+#### 火山翻译
+
+定位：默认免费翻译入口。
+
+字段：
+
+```text
+Display Name: 火山翻译
+Kind: volcengineTranslate
+Host: translate.volcengineapi.com
+Action: TranslateText
+Version: 2020-06-01
+Region: cn-north-1
+Service: translate
+```
+
+额度策略：
+
+- 产品层面按每月 200 万字符内免费使用设计。
+- 当前实现由服务端记录自然月全局字符数，达到 200 万字符后停止继续请求火山。
+- 客户端只请求服务端 `/api/translate`，不保存火山 AK/SK。
+- 火山引擎官方计费说明显示文本翻译按自然月计费，每月前 200 万字符免费，超过后按量计费；同时官方说明后付费欠费不一定立即关停，因此不能只依赖火山后台做硬停止。
+
+安全要求：
+
+- 不要把作者火山 AK/SK 写入仓库。
+- 不要把作者火山 AK/SK 编译进开源 App。
+- 火山 AK/SK 只能放在后端环境变量或密钥管理服务。
+
+参考：
+
+- https://www.volcengine.com/docs/4640/68515
+- https://www.volcengine.com/docs/6369/67269
+- https://www.volcengine.com/docs/4640/65067
+
+#### GPT
+
+定位：OpenAI-compatible 入口。
+
+不要把它绑定死到作者后端或 APIMart。用户可以填：
+
+- OpenAI
+- OpenRouter
+- SiliconFlow
+- Groq
+- 阿里云百炼
+- 其他 OpenAI-compatible 服务
+
+字段：
+
+```text
+Display Name: GPT
+Kind: openAICompatible
+Base URL: 用户可编辑
+Model ID: 用户可编辑
+API Key: 用户填写
+```
+
+默认可以给示例 Base URL，但不建议默认启用：
+
+```text
+https://api.openai.com/v1
+```
+
+#### DeepSeek-V4
+
+定位：DeepSeek / OpenAI-compatible 入口。
+
+字段：
+
+```text
+Display Name: DeepSeek-V4
+Kind: openAICompatible
+Base URL: 用户可编辑
+Model ID: 用户可编辑
+API Key: 用户填写
+```
+
+注意：当前 `deepseek-v4-flash` 是现有代理里的上游模型名。开源版不应假设所有用户都能访问这个模型。应该允许用户编辑 Model ID。
+
+#### Gemini
+
+定位：当前先按 OpenAI-compatible 入口处理。
+
+字段：
+
+```text
+Display Name: Gemini
+Kind: openAICompatible
+Base URL: 用户可编辑
+Model ID: 用户可编辑
+API Key: 用户填写
+```
+
+如果后续要直接接 Google Gemini 官方 API，需要新增单独的 Gemini Client，不复用 OpenAI-compatible 请求格式。
+
+### 可选自定义 Provider
+
+以下服务不作为 App 内“免费推荐”展示，只作为自定义配置示例。用户如果已有账号和 API Key，可以自行填写 Base URL、Model ID 和 API Key。
+
+#### OpenRouter
+
+定位：OpenAI-compatible 聚合入口。
+
+字段：
+
+```text
+Display Name: OpenRouter
+Kind: openAICompatible
+Base URL: https://openrouter.ai/api/v1
+Model ID: 用户选择或填写
+API Key: 用户填写
+```
+
+参考：
+
+- https://openrouter.ai/docs/api/reference/authentication
+
+#### Groq
+
+定位：高速 OpenAI-compatible LLM API，适合短文本翻译。
+
+字段：
+
+```text
+Display Name: Groq
+Kind: openAICompatible
+Base URL: https://api.groq.com/openai/v1
+Model ID: 用户填写
+API Key: 用户填写
+```
+
+参考：
+
+- https://console.groq.com/docs/quickstart
+- https://console.groq.com/docs/api-reference
+- https://groq.com/pricing
+
+#### SiliconFlow
+
+定位：国内访问更友好的 OpenAI-compatible Provider。
+
+字段：
+
+```text
+Display Name: SiliconFlow
+Kind: openAICompatible
+Base URL: https://api.siliconflow.cn/v1
+Model ID: 用户填写
+API Key: 用户填写
+```
+
+参考：
+
+- https://docs.siliconflow.com/en/userguide/quickstart
+
+### 高级可选 Provider
+
+#### Azure Translator
+
+定位：专门翻译 API。
+
+优点：
+
+- 翻译质量稳定
+
+缺点：
+
+- Azure 配置比 OpenAI-compatible 入口复杂
+- 需要 Endpoint、Key、Region
+
+参考：
+
+- https://azure.microsoft.com/en-us/pricing/details/translator/
+
+#### LibreTranslate
+
+定位：开源、自托管翻译 API。
+
+优点：
+
+- 可以完全自托管
+- 符合开源工具气质
+
+缺点：
+
+- 官方托管 API Key 通常需要购买
+- 翻译质量和语言覆盖取决于实例和模型
+
+参考：
+
+- https://libretranslate.com/
+- https://docs.libretranslate.com/guides/manage_api_keys/
+
+#### MyMemory
+
+定位：低门槛翻译 API。
+
+优点：
+
+- 匿名可用
+
+缺点：
+
+- 质量和稳定性不适合作为主力
+- 单段文本限制较小
+
+参考：
+
+- https://mymemory.translated.net/doc/usagelimits.php
+- https://mymemory.translated.net/doc/spec.php
+
+## 6. 默认免费 Provider 参考
+
+开源版当前只内置一个默认免费翻译入口：火山翻译。
+
+| Provider | 类型 | 免费情况 | 适合程度 |
+| --- | --- | --- | --- |
+| 火山翻译 | 专门翻译 | 官方文本翻译每月前 200 万字符免费，超过后按量计费 | 默认推荐 |
+
+其他 Provider 不在 App 内承诺免费。GPT、DeepSeek-V4、Gemini-3.5、OpenRouter、Groq、SiliconFlow、Azure Translator、Mistral、Hugging Face、LibreTranslate、MyMemory 等只作为用户自定义配置或高级扩展方向。它们是否免费、是否需要绑卡、额度多少、是否可商用，都以各自官方页面为准。
+
+## 7. 请求实现规范
+
+### OpenAI-compatible
+
+适用于：
+
+- GPT
+- DeepSeek-V4
+- Gemini-3.5 当前自定义入口
+- OpenRouter
+- Groq
+- SiliconFlow
+- 其他兼容接口
+
+请求规则：
+
+```text
+POST {baseURL}/chat/completions
+Authorization: Bearer {apiKey}
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "model": "user-configured-model-id",
+  "stream": false,
+  "temperature": 0.2,
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a professional translation engine. Only return the translated text."
+    },
+    {
+      "role": "user",
+      "content": "Translate the following text into English..."
+    }
+  ]
+}
+```
+
+解析：
+
+```text
+choices[0].message.content
+```
+
+### 火山翻译
+
+请求规则：
+
+```text
+POST https://translate.volcengineapi.com/?Action=TranslateText&Version=2020-06-01
+Host: translate.volcengineapi.com
+Region: cn-north-1
+Service: translate
+Authorization: HMAC-SHA256 ...
+```
+
+请求体：
+
+```json
+{
+  "TargetLanguage": "zh",
+  "TextList": [
+    "Hello world"
+  ]
+}
+```
+
+语言映射：
+
+```text
+auto -> 不传 SourceLanguage
+简体中文 -> zh
+英文 -> en
+```
+
+限制：
+
+- 单次 `TextList` 当前客户端只传 1 条。
+- 单次文本长度不超过 5000 字符。
+- 服务端每月累计超过 200 万字符后停止继续请求。
+
+### Gemini
+
+当前 Gemini-3.5 入口先按 OpenAI-compatible 配置处理。
+
+如果后续要接 Google Gemini 官方 API，再新增以下支持：
+
+需要支持：
+
+- API Key
+- Model ID
+- `generateContent`
+- 从 response 中提取文本
+
+验证时用短文本：
+
+```text
+Translate "Hello" into Simplified Chinese. Return only the translation.
+```
+
+### Azure Translator
+
+需要支持：
+
+- API Key
+- Endpoint
+- Region
+- source language
+- target language
+
+由于配置项比其他 Provider 多，建议放到第二批。
+
+## 8. 验证逻辑
+
+每个 Provider 都应实现：
+
+```swift
+protocol TranslationProviderClient {
+    func validate(config: TranslationProviderConfig, apiKey: String) async throws
+    func translate(
+        text: String,
+        sourceLanguage: LanguageOption,
+        targetLanguage: LanguageOption,
+        config: TranslationProviderConfig,
+        apiKey: String
+    ) async throws -> String
+}
+```
+
+验证成功条件：
+
+- HTTP 状态码为 2xx
+- 返回文本非空
+- 返回文本不是错误 JSON
+
+验证失败时：
+
+- 不启用 Provider
+- 不覆盖旧的可用 Key，除非用户明确保存
+- 显示可读错误
+
+建议验证样例：
+
+```text
+Hello
+```
+
+目标语言：
+
+```text
+简体中文
+```
+
+预期只要求返回非空文本，不强校验必须等于“你好”。
+
+## 9. 设置页交互
+
+### Provider 列表
+
+每个 Provider 行展示：
+
+- 图标
+- 名称
+- 一句描述
+- 启用状态
+- 验证状态
+
+状态文案：
+
+```text
+未配置
+待验证
+验证中
+已启用
+验证失败
+```
+
+### Provider 详情
+
+点击 Provider 后展示：
+
+- 火山翻译展示托管状态，不展示 AK/SK 输入
+- 其他模型展示 API Key SecureField
+- Base URL TextField，按 Provider 需要显示
+- Model ID TextField，按 Provider 需要显示
+- Endpoint/Region 字段，按 Provider 需要显示
+- 获取 API Key 链接
+- 验证并启用按钮
+- 删除本机密钥按钮
+
+### 翻译模型开关
+
+允许同时开启多个 Provider。
+
+如果用户启用了多个 Provider：
+
+- 翻译浮窗按设置页顺序展示多个结果
+- 每个 Provider 一个结果模块
+- 单个 Provider 失败时只展示该 Provider 的错误，不影响其他结果
+
+## 10. 当前文件改造清单
+
+### `LightTranslator/Core/TranslationModel.swift`
+
+建议改名或重构为：
+
+```text
+TranslationProvider.swift
+TranslationProviderConfig.swift
+```
+
+职责：
+
+- Provider 定义
+- Provider kind
+- 默认 Provider 顺序
+- 展示名称、图标、描述
+
+### `LightTranslator/Core/AppSettings.swift`
+
+新增：
+
+```swift
+var enabledModelIDs: [String]
+var providerConfigs: [TranslationProviderConfig]
+```
+
+移除或逐步废弃：
+
+```swift
+selectedModelID
+translationServiceBaseURL
+```
+
+如果需要兼容旧设置：
+
+- `selectedModelID` 迁移到 `selectedProviderID`
+- `translationServiceBaseURL` 可迁移到 GPT/OpenAI-compatible Provider 的 `baseURL`
+
+### `LightTranslator/Services/AppSettingsStore.swift`
+
+需要支持：
+
+- 读写 Provider configs
+- 迁移旧的 selected model
+- 只保存非敏感字段
+- 不保存 API Key
+
+### `LightTranslator/Services/KeychainStore.swift`
+
+需要支持：
+
+- 按 account 保存不同 Provider 的 key
+- 删除 key
+- 加载 key
+
+### `LightTranslator/Services/TranslationService.swift`
+
+改造为：
+
+```text
+读取 selectedProviderID
+-> 读取 Provider config
+-> 从 Keychain 读取 API Key
+-> 根据 Provider kind 创建 client
+-> 直接请求 Provider
+-> 返回 ModelTranslationResult
+```
+
+不再默认调用本地代理 `/api/translate`。
+
+### `LightTranslator/UI/Settings/SettingsView.swift`
+
+需要改造：
+
+- Provider 列表
+- Provider 详情表单
+- API Key 输入
+- Base URL / Model ID 输入
+- 验证并启用按钮
+- 删除密钥按钮
+- 验证状态
+
+### `LightTranslator/UI/Settings/SettingsViewModel.swift`
+
+需要新增：
+
+- 加载 Provider configs
+- 保存非敏感配置
+- 保存 Keychain secret
+- 删除 Keychain secret
+- 验证 Provider
+- 设置启用 Provider 列表
+- 处理验证错误
+
+### `LightTranslator/UI/Translation/TranslationViewModel.swift`
+
+需要：
+
+- 展示启用 Provider 名称
+- 未配置 Provider 时提示用户去设置
+- 翻译前检查 Provider 是否启用且 Keychain 有 key
+
+### `server/`
+
+客户端默认火山翻译依赖 `server/`。
+
+处理方式：
+
+- 服务端保存火山 AK/SK
+- 服务端提供 `/translate` 接口
+- 服务端记录自然月全局字符数
+- 超过 2,000,000 字符后停止继续请求火山
+- 客户端不接触作者 AK/SK
+
+## 11. 落地顺序
+
+### Phase A：配置模型改造
+
+1. 新增 `TranslationProviderKind`
+2. 新增 `TranslationProviderConfig`
+3. 新增默认 Provider 顺序
+4. 改造 `AppSettings`
+5. 改造 `AppSettingsStore`
+6. 保留旧设置迁移
+
+验收：
+
+- App 能启动
+- 设置页能展示 Provider 列表
+- 切换 Provider 开关后能持久化
+
+### Phase B：Keychain 多 Key
+
+1. 改造 `KeychainStore`
+2. 支持 `saveSecret`
+3. 支持 `loadSecret`
+4. 支持 `deleteSecret`
+5. API Key 不进入 UserDefaults
+
+验收：
+
+- 每个 Provider 能单独保存 key
+- 删除一个 Provider key 不影响其他 Provider
+- 重启 App 后 key 仍能读取
+
+### Phase C：Provider Client
+
+1. 实现 `VolcengineTranslateClient`
+2. 实现 `OpenAICompatibleProviderClient`
+3. 实现火山服务端月用量拦截
+4. 实现统一错误模型
+5. 实现验证请求
+
+验收：
+
+- 火山翻译可请求
+- 火山翻译超过服务端 200 万字符后停止请求
+- OpenAI-compatible Provider 可验证
+- GPT / DeepSeek-V4 / Gemini-3.5 自定义 API 信息可验证
+- 无 Key 时不会发请求
+
+### Phase D：设置页落地
+
+1. API Key 输入框
+2. Base URL / Model ID 配置
+3. 验证并启用按钮
+4. 删除密钥按钮
+5. 验证状态展示
+6. 获取 API Key 链接
+
+验收：
+
+- 用户能从设置页完成 Provider 配置
+- 验证失败有明确错误
+- 验证成功后该 Provider 可用于翻译
+
+### Phase E：翻译流程切换
+
+1. `TranslationService` 不再调用本地代理
+2. 按 selected Provider 直接调用 Provider API
+3. 翻译浮窗标题显示 Provider 名称
+4. 未配置时提示去设置
+
+验收：
+
+- 配置成功后可以翻译
+- 未配置时不崩溃
+- 本地代理不启动也可以使用已配置 Provider
+
+## 12. 不做
+
+开源版 MVP 不做：
+
+- 用户账号
+- 订阅套餐
+- 支付
+- 官网
+- 飞书 Webhook
+- 管理后台
+- Neon 数据库
+- systemd 部署
+- Nginx 配置
+- 云端用量统计
+
+火山翻译默认服务需要保留：
+
+- 服务器火山翻译代理
+- 服务端全局月用量统计
+- 服务端 2,000,000 字符硬拦截
+- 作者托管火山 AK/SK
+
+## 13. 风险与注意事项
+
+### 用户 Key 暴露风险
+
+这是桌面 App，本地 Keychain 是合理方案，但仍要提醒用户：
+
+- API Key 是用户自己的资产
+- 不要分享截图
+- 不要提交日志
+- 不要把 Key 写进 issue
+
+### 免费额度变化
+
+Provider 免费政策会变：
+
+- App 内不要承诺永久免费
+- 文档使用“可能有免费额度”
+- 设置页使用“查看官方额度说明”
+
+### Provider 协议差异
+
+OpenAI-compatible 能覆盖很多服务，但不能覆盖全部。
+
+需要单独实现：
+
+- Gemini
+- Azure Translator
+- LibreTranslate
+
+### 翻译质量差异
+
+LLM 翻译和专门翻译 API 风格不同：
+
+- 火山翻译/Azure 更像传统翻译工具
+- Gemini/Groq/OpenRouter 更适合自然语言润色和上下文翻译
+- MyMemory/LibreTranslate 适合作为轻量或自托管选择
+
+## 14. 完成定义
+
+开源托管火山 MVP 完成标准：
+
+```text
+用户首次打开 App
+-> 客户端默认没有任何火山 API Key
+-> 用户打开设置页
+-> 选择 Provider
+-> 输入 API Key / Base URL / Model ID
+-> 点击验证并启用
+-> API Key 存入 Keychain
+-> Provider 配置存入 UserDefaults
+-> 用户回到翻译浮窗
+-> 输入文本并翻译
+-> App 直接调用用户配置的 Provider
+-> 返回译文、复制、朗读均可用
+```
+
+技术验收：
+
+- 不启动 `server/` 也能翻译
+- 仓库不包含任何真实 API Key
+- UserDefaults 不包含 API Key
+- Keychain 可保存多个 Provider Key
+- 验证失败不会启用 Provider
+- 构建命令通过：
 
 ```bash
 xcodegen generate
-```
-
-构建 Debug 版本：
-
-```bash
 xcodebuild -project LightTranslator.xcodeproj -scheme LightTranslator -configuration Debug -derivedDataPath .build/DerivedData build CODE_SIGNING_ALLOWED=NO
 ```
-
-打开菜单栏 App，并强制显示翻译窗口：
-
-```bash
-open -n .build/DerivedData/Build/Products/Debug/轻译.app --args --show-translator
-```
-
-### 本地代理服务
-
-当前本地代理默认监听：
-
-```text
-127.0.0.1:8791
-```
-
-启动命令：
-
-```bash
-cd /Users/a1234/Documents/轻译
-APIMART_API_KEY='真实 key 不要写入仓库' PORT=8791 HOST=127.0.0.1 node server/src/index.js
-```
-
-本地代理接口：
-
-```text
-GET  /health
-GET  /api/models
-POST /api/translate
-```
-
-`.env` 和真实 API Key 不应写入仓库。`server/.env.example` 只放占位 key。
-
-### 已实现功能
-
-- 菜单栏常驻 App，无 Dock 图标
-- 全局快捷键唤起翻译浮窗
-- 翻译浮窗包含输入框、语言选择、Enter 翻译、结果区、复制、朗读
-- 自动语言方向：主要中文译英文，主要英文译中文
-- 设置页支持模型选择、快捷键、是否打开时读取剪贴板
-- 设置页已改为操作即保存，无保存按钮
-- 模型选择为单选，并带图标和一句描述
-- 翻译结果标题会显示当前模型名，例如 `GPT 翻译`
-
-当前客户端模型映射：
-
-| 客户端模型 | 上游模型 |
-| --- | --- |
-| `GPT` | `gpt-5.4-nano` |
-| `DeepSeek-V4` | `deepseek-v4-flash` |
-| `Gemini-3.5` | `gemini-3.5-flash` |
-
-模型图标位于 `Assets.xcassets`。
-
-### 关键文件
-
-- `LightTranslator/Core/TranslationModel.swift`
-- `LightTranslator/Core/AppSettings.swift`
-- `LightTranslator/Services/AppSettingsStore.swift`
-- `LightTranslator/Services/TranslationService.swift`
-- `LightTranslator/UI/Settings/SettingsView.swift`
-- `LightTranslator/UI/Settings/SettingsViewModel.swift`
-- `LightTranslator/UI/Translation/TranslationView.swift`
-- `LightTranslator/UI/Translation/TranslationViewModel.swift`
-- `server/src/index.js`
-- `docs/PHASE_2_COMMERCIALIZATION.md`
-
-### 当前仓库注意事项
-
-- 仓库有大量未提交改动，后续开发不要回退他人或历史未提交改动
-- 新增商业化能力时，优先保持现有本地代理模式可用
-- 客户端不能写入、缓存或打包真实上游大模型 API Key
-
-## 15. 服务器部署上下文
-
-### SSH 连接
-
-服务器：
-
-```text
-ubuntu@45.43.57.11
-```
-
-本机已有 SSH key：
-
-```bash
-ssh -i ~/.ssh/hotwell_codex_ed25519 -o IdentitiesOnly=yes ubuntu@45.43.57.11
-```
-
-不要把私钥内容发出去。如果对方在同一台 Mac 上操作，用上面这个本地 key 路径即可。
-
-### 现有线上项目
-
-服务器上已有项目必须保持不受影响。
-
-#### 图火 tuhuo-image
-
-- 域名：`https://tuhuo3.com`
-- 部署目录：`/var/www/tuhuo-image`
-- systemd：`tuhuo-image.service`
-- 本地端口：`127.0.0.1:8790`
-- Nginx 配置：`/etc/nginx/conf.d/tuhuo-image.conf`
-- 静态目录：`/var/www/tuhuo-image/dist/client`
-
-#### hotwell / hooowell
-
-- 部署目录：`/var/www/hotwell`
-- systemd：`hotwell-api.service`
-- 端口：`*:8787`
-- 不要覆盖 `/var/www/hotwell`
-- 不要复用或重启 `hotwell-api.service`
-
-#### openclaw
-
-不要停止、重启或修改：
-
-- `openclaw`
-- `openclaw-gateway`
-
-保持以下端口不受影响：
-
-- `127.0.0.1:18789`
-- `127.0.0.1:18791`
-- `127.0.0.1:40071`
-- UDP `5353`
-
-### 新项目部署隔离要求
-
-轻译商业化后端或官网部署到该服务器时，必须和现有项目隔离：
-
-- 新建独立目录，例如 `/var/www/light-translator`
-- 新建独立 systemd service，例如 `light-translator.service`
-- 使用新的本地端口，例如从 `127.0.0.1:8791` 往后选择
-- 部署前先用 `ss -lntup` 查端口占用
-- 新建独立 Nginx 配置，例如 `/etc/nginx/conf.d/light-translator.conf`
-- 只 reload Nginx，不重启其他业务
-
-部署前建议检查：
-
-```bash
-hostname
-uptime
-free -h
-df -h /
-systemctl is-active tuhuo-image.service hotwell-api.service openclaw-gateway.service
-ss -lntup
-ls -la /var/www
-```
-
-Nginx 变更后只执行：
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### 禁止操作
-
-明确不要做：
-
-- 不要 `rm -rf /var/www/hotwell`
-- 不要覆盖 `/var/www/tuhuo-image`
-- 不要改 `/etc/nginx/conf.d/tuhuo-image.conf`，除非任务就是改图火
-- 不要停止或重启 `hotwell-api.service`
-- 不要停止或重启 `openclaw`
-- 不要停止或重启 `openclaw-gateway`
-- 不要复用端口 `8787`
-- 不要复用端口 `8790`
-- 不要复用端口 `18789`
-- 不要复用端口 `18791`
-- 不要复用端口 `40071`
-- 不要复用 UDP `5353`
-
-### 当前服务器资源概况
-
-- 2 vCPU
-- 3.8GiB RAM
-- 磁盘 77G，已用约 11G
-- 当前负载很低
-- 可以再跑一个小项目，但要使用独立端口、目录、systemd service 和 Nginx 配置
-
-## 16. 商业化开发优先级补充
-
-下一步应优先补齐：
-
-- 账号登录
-- 订阅状态
-- token Keychain 存储
-- 后端鉴权
-- 用量统计
-- 套餐接口
-- 支付申报接口
-
-推荐先把本地代理升级为商业化后端雏形：
-
-```text
-现有 /api/translate
--> 增加用户 access token 校验
--> 查询订阅状态
--> 计算和记录用量
--> 调用 APIMart
--> 返回翻译结果和剩余额度
-```
-
-这样可以最大限度复用当前客户端翻译流程，同时逐步接入登录、订阅和后台审核。

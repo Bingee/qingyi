@@ -35,6 +35,9 @@ final class TranslationWindowController {
             onClose: { [weak self] in self?.panel?.orderOut(nil) },
             onPreferredSizeChange: { [weak self] size in
                 self?.resizePanel(to: size)
+            },
+            onPinStateChange: { [weak self] isPinned in
+                self?.applyPinState(isPinned)
             }
         )
         let hostingController = NSHostingController(rootView: rootView)
@@ -44,7 +47,7 @@ final class TranslationWindowController {
         hostingController.view.layer?.masksToBounds = true
 
         let panel = TranslatorPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 284),
+            contentRect: NSRect(x: 0, y: 0, width: 368, height: 284),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -64,7 +67,28 @@ final class TranslationWindowController {
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         panel.contentView?.layer?.cornerRadius = 24
         panel.contentView?.layer?.masksToBounds = true
+        applyPinState(viewModel.isPinned, to: panel)
         return panel
+    }
+
+    private func applyPinState(_ isPinned: Bool) {
+        guard let panel else {
+            return
+        }
+
+        applyPinState(isPinned, to: panel)
+    }
+
+    private func applyPinState(_ isPinned: Bool, to panel: NSPanel) {
+        panel.level = isPinned ? .statusBar : .floating
+        panel.hidesOnDeactivate = !isPinned
+        panel.collectionBehavior = isPinned
+            ? [.canJoinAllSpaces, .fullScreenAuxiliary]
+            : [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+
+        if isPinned, panel.isVisible {
+            panel.orderFrontRegardless()
+        }
     }
 
     private func position(_ panel: NSPanel) {

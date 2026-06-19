@@ -7,13 +7,19 @@ struct TranslationView: View {
     @ObservedObject var viewModel: TranslationViewModel
     let onClose: () -> Void
     var onPreferredSizeChange: (CGSize) -> Void = { _ in }
+    var onPinStateChange: (Bool) -> Void = { _ in }
     @State private var inputHasVisibleContent = false
     @State private var isResultCollapsed = false
+    @State private var collapsedModelIDs: Set<String> = []
+    @State private var idleResultIsHovered = false
 
     private let panelWidth: CGFloat = 368
     private let collapsedHeight: CGFloat = 256
     private let minExpandedTranslationBlockHeight: CGFloat = 98
-    private let maxExpandedTranslationBlockHeight: CGFloat = 220
+    private let maxExpandedTranslationBlockHeight: CGFloat = 460
+    private let maxResultCardHeight: CGFloat = 190
+    private let resultCardTopPadding: CGFloat = 12
+    private let resultCardBottomPadding: CGFloat = 10
 
     var body: some View {
         VStack(spacing: 12) {
@@ -35,6 +41,7 @@ struct TranslationView: View {
         .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .onAppear {
             onPreferredSizeChange(preferredSize)
+            onPinStateChange(viewModel.isPinned)
         }
         .onChange(of: hasExpandedOutput) { _, _ in
             onPreferredSizeChange(preferredSize)
@@ -42,12 +49,17 @@ struct TranslationView: View {
         .onChange(of: viewModel.translationResults) { _, _ in
             if hasResultOutput {
                 isResultCollapsed = false
+                collapsedModelIDs = []
             }
             onPreferredSizeChange(preferredSize)
         }
         .onChange(of: viewModel.sourceText) { _, _ in
             isResultCollapsed = false
+            collapsedModelIDs = []
             viewModel.markEditing()
+        }
+        .onChange(of: viewModel.isPinned) { _, isPinned in
+            onPinStateChange(isPinned)
         }
     }
 
@@ -125,99 +137,197 @@ struct TranslationView: View {
     }
 
     private var translationBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            translationHeader
-
+        Group {
             if hasExpandedOutput {
-                ScrollView(.vertical) {
-                    Text(resultText)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(resultForegroundStyle)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(visibleResultModels) { model in
+                            resultCard(for: model)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .frame(height: resultTextViewportHeight, alignment: .topLeading)
+                .frame(height: translationBlockHeight, alignment: .topLeading)
                 .frame(maxWidth: .infinity)
-
-                resultActions
+            } else {
+                idleTranslationCard
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(height: translationBlockHeight, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(blockColor)
-        )
     }
 
-    private var translationHeader: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(primaryTextColor)
-                .frame(width: 16, height: 16)
+    private var idleTranslationCard: some View {
+        let showsQuickActions = idleResultIsHovered
+
+        return HStack(spacing: 8) {
+            modelIcon(for: viewModel.selectedModel, size: 18)
 
             Text("\(viewModel.selectedModel.displayName) 翻译")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(primaryTextColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
-            if viewModel.status.isTranslating {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.72)
-            }
+            Spacer()
 
-            Button {
-                isResultCollapsed.toggle()
-            } label: {
-                Image(systemName: hasExpandedOutput ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(primaryTextColor)
-                    .frame(width: 16, height: 16)
+            HStack(spacing: 8) {
+                Button {
+                    viewModel.togglePinned()
+                } label: {
+                    Image(systemName: viewModel.isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(primaryTextColor)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help(viewModel.isPinned ? "取消置顶" : "置顶浮窗")
+
+                Button {
+                    viewModel.openHistorySettings()
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(primaryTextColor)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help("查看历史记录")
             }
-            .buttonStyle(.plain)
-            .disabled(!hasResultOutput || viewModel.status.isTranslating)
-            .help(hasExpandedOutput ? "收起结果" : "展开结果")
+            .opacity(showsQuickActions ? 1 : 0)
+            .allowsHitTesting(showsQuickActions)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(primaryTextColor)
+                .frame(width: 16, height: 16)
         }
-        .frame(height: 20)
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(blockColor)
+        )
+        .onHover { isHovered in
+            idleResultIsHovered = isHovered
+        }
     }
 
-    private var resultActions: some View {
+    private func resultCard(for model: TranslationModel) -> some View {
+        let isCollapsed = collapsedModelIDs.contains(model.id)
+        let text = resultText(for: model)
+        let result = result(for: model)
+        let isError = result?.errorMessage != nil || (translationResultsAreEmpty && statusFailureMessage != nil)
+        let textViewportHeight = resultTextViewportHeight(for: model)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                modelIcon(for: model, size: 20)
+
+                Text("\(model.displayName) 翻译")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(primaryTextColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if viewModel.status.isTranslating {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.72)
+                }
+
+                Button {
+                    viewModel.togglePinned()
+                } label: {
+                    Image(systemName: viewModel.isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(primaryTextColor)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help(viewModel.isPinned ? "取消置顶" : "置顶浮窗")
+
+                Button {
+                    viewModel.openHistorySettings()
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(primaryTextColor)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help("查看历史记录")
+
+                Button {
+                    toggleResultCard(modelID: model.id)
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(primaryTextColor)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help(isCollapsed ? "展开结果" : "收起结果")
+            }
+            .frame(height: 22)
+
+            if !isCollapsed {
+                resultTextViewport(
+                    text: text,
+                    isError: isError,
+                    height: textViewportHeight,
+                    showsScrollIndicator: measuredResultTextHeight(for: model) > textViewportHeight + 1
+                )
+
+                resultActions(modelID: model.id, canUseResult: result?.errorMessage == nil && result?.hasText == true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, resultCardTopPadding)
+        .padding(.bottom, resultCardBottomPadding)
+        .frame(height: resultCardHeight(for: model), alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(blockColor)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func resultTextViewport(
+        text: String,
+        isError: Bool,
+        height: CGFloat,
+        showsScrollIndicator: Bool
+    ) -> some View {
+        ScrollView(.vertical, showsIndicators: showsScrollIndicator) {
+            Text(text)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isError ? Color.red : primaryTextColor)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(height: height, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
+    }
+
+    private func resultActions(modelID: String, canUseResult: Bool) -> some View {
         HStack(spacing: 8) {
-            Button {
-                viewModel.copyResult(modelID: resultModelID)
-            } label: {
-                Image("CopyIcon")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(primaryTextColor)
-                    .frame(width: 16, height: 16)
+            resultActionButton(
+                imageName: "SpeakerIcon",
+                help: "朗读",
+                isDisabled: !canUseResult
+            ) {
+                viewModel.speakResult(modelID: modelID)
             }
-            .buttonStyle(.plain)
-            .disabled(!canUseResult)
-            .help("复制译文")
 
-            Button {
-                viewModel.speakResult(modelID: resultModelID)
-            } label: {
-                Image("SpeakerIcon")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(primaryTextColor)
-                    .frame(width: 16, height: 16)
+            resultActionButton(
+                imageName: "CopyIcon",
+                help: "复制译文",
+                isDisabled: !canUseResult
+            ) {
+                viewModel.copyResult(modelID: modelID)
             }
-            .buttonStyle(.plain)
-            .disabled(!canUseResult)
-            .help("朗读")
 
-            if !viewModel.copyMessage.isEmpty {
-                Text(viewModel.copyMessage)
+            if !viewModel.copyMessage(for: modelID).isEmpty {
+                Text(viewModel.copyMessage(for: modelID))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 4)
@@ -226,29 +336,92 @@ struct TranslationView: View {
         .frame(height: 16)
     }
 
-    private var resultText: String {
+    private func resultActionButton(
+        imageName: String,
+        help: String,
+        isDisabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(imageName)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(primaryTextColor)
+                .frame(width: 16, height: 16)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help(help)
+    }
+
+    private func modelIcon(for model: TranslationModel, size: CGFloat) -> some View {
+        Group {
+            if let assetName = model.assetName {
+                Image(assetName)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                Image(systemName: model.systemImage)
+                    .font(.system(size: size * 0.76, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
+    private func resultText(for model: TranslationModel) -> String {
+        if let result = result(for: model) {
+            return result.errorMessage ?? result.translatedText
+        }
+
         switch viewModel.status {
         case .idle, .editing:
             return ""
         case .translating:
             return "正在翻译..."
         case .success:
-            return activeResult?.errorMessage ?? activeResult?.translatedText ?? "翻译服务未返回结果。"
+            return "翻译服务未返回结果。"
         case .failed(let message):
             return message
         }
     }
 
-    private var activeResult: ModelTranslationResult? {
-        viewModel.translationResults.first
+    private func result(for model: TranslationModel) -> ModelTranslationResult? {
+        viewModel.translationResults.first { $0.modelID == model.id }
     }
 
-    private var resultModelID: String {
-        activeResult?.modelID ?? viewModel.selectedModel.id
+    private var visibleResultModels: [TranslationModel] {
+        if !viewModel.translationResults.isEmpty {
+            return viewModel.translationResults.map(\.model)
+        }
+
+        if !viewModel.enabledModels.isEmpty {
+            return viewModel.enabledModels
+        }
+
+        return [viewModel.selectedModel]
     }
 
-    private var canUseResult: Bool {
-        activeResult?.errorMessage == nil && activeResult?.hasText == true
+    private var translationResultsAreEmpty: Bool {
+        viewModel.translationResults.isEmpty
+    }
+
+    private var statusFailureMessage: String? {
+        if case .failed(let message) = viewModel.status {
+            return message
+        }
+        return nil
+    }
+
+    private func toggleResultCard(modelID: String) {
+        if collapsedModelIDs.contains(modelID) {
+            collapsedModelIDs.remove(modelID)
+        } else {
+            collapsedModelIDs.insert(modelID)
+        }
     }
 
     private var sourceLanguageTitle: String {
@@ -282,18 +455,29 @@ struct TranslationView: View {
             return 44
         }
 
-        let totalHeight = 12 + 20 + 8 + resultTextViewportHeight + 8 + 16 + 12
+        let totalHeight = visibleResultModels
+            .map { resultCardHeight(for: $0) }
+            .reduce(0, +) + CGFloat(max(0, visibleResultModels.count - 1)) * 10
         return min(max(totalHeight, minExpandedTranslationBlockHeight), maxExpandedTranslationBlockHeight)
     }
 
-    private var resultTextViewportHeight: CGFloat {
-        let maxTextHeight = maxExpandedTranslationBlockHeight - 12 - 20 - 8 - 8 - 16 - 12
-        return min(measuredResultTextHeight(), maxTextHeight)
+    private func resultCardHeight(for model: TranslationModel) -> CGFloat {
+        guard !collapsedModelIDs.contains(model.id) else {
+            return 46
+        }
+
+        let totalHeight = resultCardTopPadding + 22 + 8 + resultTextViewportHeight(for: model) + 8 + 16 + resultCardBottomPadding
+        return min(max(totalHeight, minExpandedTranslationBlockHeight), maxResultCardHeight)
     }
 
-    private func measuredResultTextHeight() -> CGFloat {
-        let text = resultText.isEmpty ? " " : resultText
-        let availableWidth = panelWidth - 32 - 32
+    private func resultTextViewportHeight(for model: TranslationModel) -> CGFloat {
+        let maxTextHeight = maxResultCardHeight - resultCardTopPadding - 22 - 8 - 8 - 16 - resultCardBottomPadding
+        return min(measuredResultTextHeight(for: model), maxTextHeight)
+    }
+
+    private func measuredResultTextHeight(for model: TranslationModel) -> CGFloat {
+        let text = resultText(for: model).isEmpty ? " " : resultText(for: model)
+        let availableWidth = panelWidth - 32 - 32 - 32
         let font = NSFont.systemFont(ofSize: 16, weight: .medium)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byWordWrapping
@@ -344,15 +528,6 @@ struct TranslationView: View {
             : NSColor(calibratedRed: 51 / 255, green: 51 / 255, blue: 51 / 255, alpha: 1)
     }
 
-    private var resultForegroundStyle: Color {
-        if case .failed = viewModel.status {
-            return .red
-        }
-        if activeResult?.errorMessage != nil {
-            return .red
-        }
-        return primaryTextColor
-    }
 }
 
 private struct BlinkingInsertionCursor: View {

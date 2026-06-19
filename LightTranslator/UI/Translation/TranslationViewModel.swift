@@ -9,36 +9,41 @@ final class TranslationViewModel: ObservableObject {
     @Published var targetLanguage: LanguageOption
     @Published var resolvedTargetLanguage: LanguageOption = .simplifiedChinese
     @Published var selectedModel = TranslationModel.model(for: TranslationModel.defaultSelectedID)
+    @Published var enabledModels: [TranslationModel] = [TranslationModel.model(for: TranslationModel.defaultSelectedID)]
     @Published var status: TranslationStatus = .idle
-    @Published var copyMessage = ""
+    @Published var isPinned = false
+    @Published private var copyMessages: [String: String] = [:]
 
     private let settingsStore: AppSettingsStore
     private let clipboardManager: ClipboardManager
     private let languageDetector: LanguageDetector
     private let translationService: TranslationService
+    private let historyStore: TranslationHistoryStore
     private let speechSynthesizer = AVSpeechSynthesizer()
 
     init(
         settingsStore: AppSettingsStore,
         clipboardManager: ClipboardManager,
         languageDetector: LanguageDetector,
-        translationService: TranslationService
+        translationService: TranslationService,
+        historyStore: TranslationHistoryStore
     ) {
         self.settingsStore = settingsStore
         self.clipboardManager = clipboardManager
         self.languageDetector = languageDetector
         self.translationService = translationService
+        self.historyStore = historyStore
 
         let settings = settingsStore.load()
         sourceLanguage = settings.defaultSourceLanguage
         targetLanguage = settings.defaultTargetLanguage
-        selectedModel = TranslationModel.model(for: settings.selectedModelID)
+        refreshEnabledModels(settings: settings)
     }
 
     func prepareForOpen() {
-        copyMessage = ""
+        copyMessages = [:]
         status = .editing
-        refreshSelectedModel()
+        refreshEnabledModels()
 
         let readClipboard = settingsStore.load().readClipboardOnOpen
         guard readClipboard else {
@@ -67,11 +72,11 @@ final class TranslationViewModel: ObservableObject {
             for: requestText,
             selectedTarget: targetLanguage
         )
-        refreshSelectedModel()
+        refreshEnabledModels()
         resolvedTargetLanguage = target
         status = .translating
         translationResults = []
-        copyMessage = ""
+        copyMessages = [:]
 
         Task {
             do {
@@ -81,6 +86,11 @@ final class TranslationViewModel: ObservableObject {
                     targetLanguage: target
                 )
                 translationResults = results
+                saveHistory(
+                    sourceText: requestText,
+                    targetLanguage: target,
+                    results: results
+                )
                 status = .success
             } catch {
                 status = .failed(error.localizedDescription)
@@ -88,8 +98,11 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
-    private func refreshSelectedModel() {
-        selectedModel = TranslationModel.model(for: settingsStore.load().selectedModelID)
+    private func refreshEnabledModels(settings: AppSettings? = nil) {
+        let currentSettings = settings ?? settingsStore.load()
+        let models = currentSettings.enabledModelIDs.map { TranslationModel.model(for: $0) }
+        enabledModels = models.isEmpty ? [] : models
+        selectedModel = enabledModels.first ?? TranslationModel.model(for: TranslationModel.defaultSelectedID)
     }
 
     func swapLanguages() {
@@ -104,7 +117,7 @@ final class TranslationViewModel: ObservableObject {
         }
 
         status = .editing
-        copyMessage = ""
+        copyMessages = [:]
     }
 
     func collapseResult() {
@@ -113,7 +126,11 @@ final class TranslationViewModel: ObservableObject {
         }
 
         status = .editing
-        copyMessage = ""
+        copyMessages = [:]
+    }
+
+    func copyMessage(for modelID: String) -> String {
+        copyMessages[modelID, default: ""]
     }
 
     func copyResult(modelID: String) {
@@ -123,12 +140,12 @@ final class TranslationViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         guard !result.isEmpty else {
-            copyMessage = "暂无可复制的译文"
+            copyMessages[modelID] = "暂无可复制的译文"
             return
         }
 
         clipboardManager.copy(result)
-        copyMessage = "已复制"
+        copyMessages[modelID] = "已复制"
     }
 
     func speakResult(modelID: String) {
@@ -147,5 +164,38 @@ final class TranslationViewModel: ObservableObject {
         }
 
         speechSynthesizer.speak(AVSpeechUtterance(string: result))
+    }
+
+    func openHistorySettings() {
+        NotificationCenter.default.post(name: .openHistorySettings, object: nil)
+    }
+
+    func togglePinned() {
+        isPinned.toggle()
+    }
+
+    private func saveHistory(
+        sourceText: String,
+        targetLanguage: LanguageOption,
+        results: [ModelTranslationResult]
+    ) {
+        let historyResults = results
+            .filter { $0.hasText || $0.errorMessage != nil }
+            .map(TranslationHistoryResult.init(result:))
+
+        guard historyResults.contains(where: \.hasText) else {
+            return
+        }
+
+        historyStore.add(
+            TranslationHistoryEntry(
+                id: UUID(),
+                createdAt: Date(),
+                sourceText: sourceText,
+                sourceLanguage: sourceLanguage,
+                targetLanguage: targetLanguage,
+                results: historyResults
+            )
+        )
     }
 }

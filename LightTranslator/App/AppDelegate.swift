@@ -3,21 +3,28 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = AppSettingsStore()
+    private let keychainStore = KeychainStore()
+    private let historyStore = TranslationHistoryStore()
     private lazy var clipboardManager = ClipboardManager()
     private lazy var translationService = TranslationService(
-        settingsStore: settingsStore
+        settingsStore: settingsStore,
+        keychainStore: keychainStore
     )
     private lazy var translationWindowController = TranslationWindowController(
         viewModel: TranslationViewModel(
             settingsStore: settingsStore,
             clipboardManager: clipboardManager,
             languageDetector: LanguageDetector(),
-            translationService: translationService
+            translationService: translationService,
+            historyStore: historyStore
         )
     )
     private lazy var settingsWindowController = SettingsWindowController(
         viewModel: SettingsViewModel(
-            settingsStore: settingsStore
+            settingsStore: settingsStore,
+            keychainStore: keychainStore,
+            clipboardManager: clipboardManager,
+            historyStore: historyStore
         )
     )
     private lazy var menuBarController = MenuBarController(
@@ -37,6 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(hotkeySettingsDidChange),
             name: .hotkeySettingsDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(openHistorySettings),
+            name: .openHistorySettings,
             object: nil
         )
 
@@ -65,7 +78,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController.show()
     }
 
+    private func showHistorySettings() {
+        translationWindowController.hide()
+        settingsWindowController.show(section: .history)
+    }
+
     @objc private func hotkeySettingsDidChange() {
         hotkeyManager.registerConfiguredHotkey()
+    }
+
+    @objc private func openHistorySettings() {
+        showHistorySettings()
     }
 }

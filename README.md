@@ -58,3 +58,4 @@ xcodebuild -project LightTranslator.xcodeproj \
 - 快捷键可在设置页录制修改。
 - 暂不支持 OCR、划词翻译、替换选中文本、历史记录和多服务管理。
 - API Key 存储在 macOS Keychain，Base URL 和 Model 存储在 UserDefaults。
+- 默认翻译服务会记录匿名使用统计，用于估算翻译 DAU、请求量和字符量；不上传原文、译文或 API Key，可在设置中关闭。

@@ -15,6 +15,7 @@
 		42CB7D0C0DB2665A4A816620 /* VisualEffectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE631D38E470CF2F8EB32A1C /* VisualEffectView.swift */; };
 		5C488DE9D9832DEC1CC94400 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700CDE3E33FB7B049166795A /* KeychainStore.swift */; };
 		5DDD832B30B3180D77BF8F83 /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC812173E80850E8C9266FC /* TranslationService.swift */; };
+		62A763F9993FD33EA1674A03 /* OpenAICompatibleTranslateClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CCFBDE445398D6B1165E1C /* OpenAICompatibleTranslateClient.swift */; };
 		71F7522AB527345729BF8CBD /* HotkeyRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E65BAC9C9FBE6924CEC18701 /* HotkeyRecorder.swift */; };
 		72280A5BE6DC026A12AC3E81 /* AppSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25580094310FA9CC6F71E16 /* AppSettingsStore.swift */; };
 		80F27163355276B3C2FDA755 /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B0E5FE1780D9C59E065D42 /* SettingsWindowController.swift */; };
@@ -44,6 +45,7 @@
 		342AB86A04772E2AEE7228B6 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		368EF73D5893C932CE425E0D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3A049644248F83D66AABF85B /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		43CCFBDE445398D6B1165E1C /* OpenAICompatibleTranslateClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleTranslateClient.swift; sourceTree = "<group>"; };
 		6F7CFDA56C229F3559611E19 /* LightTranslator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LightTranslator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		700CDE3E33FB7B049166795A /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		7C4942A84D754187881ED8E3 /* HotkeyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyConfig.swift; sourceTree = "<group>"; };
@@ -150,6 +152,7 @@
 				979F99483A346F97BDBCC944 /* ClipboardManager.swift */,
 				700CDE3E33FB7B049166795A /* KeychainStore.swift */,
 				D53523521D9FBA05C43EE137 /* LanguageDetector.swift */,
+				43CCFBDE445398D6B1165E1C /* OpenAICompatibleTranslateClient.swift */,
 				0EC812173E80850E8C9266FC /* TranslationService.swift */,
 			);
 			path = Services;
@@ -261,6 +264,7 @@
 				BC6B40A30492557E5CAA7859 /* LanguageOption.swift in Sources */,
 				1CA7A08E6065377D0F6BD289 /* LightTranslatorApp.swift in Sources */,
 				9DCDA417AECA360C9AD08659 /* MenuBarController.swift in Sources */,
+				62A763F9993FD33EA1674A03 /* OpenAICompatibleTranslateClient.swift in Sources */,
 				853CBFB5785FF0E1A84DBAEA /* SettingsView.swift in Sources */,
 				A5EB43A4E2C5DBEA18CD28FB /* SettingsViewModel.swift in Sources */,
 				80F27163355276B3C2FDA755 /* SettingsWindowController.swift in Sources */,

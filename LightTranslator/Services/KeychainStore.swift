@@ -16,11 +16,26 @@ enum KeychainError: LocalizedError {
 }
 
 final class KeychainStore {
-    private let service = "com.local.light-translator.api-key"
-    private let account = "default"
+    static let volcengineAccessKeyAccount = "provider.volcengine.accessKeyID"
+    static let volcengineSecretKeyAccount = "provider.volcengine.secretAccessKey"
+
+    static func customModelAPIKeyAccount(for modelID: String) -> String {
+        "provider.custom.\(modelID).apiKey"
+    }
+
+    private let service = "com.local.light-translator.provider-key"
+    private let legacyAccount = "default"
 
     func saveAPIKey(_ apiKey: String) throws {
-        let data = Data(apiKey.utf8)
+        try saveSecret(apiKey, account: legacyAccount)
+    }
+
+    func loadAPIKey() throws -> String {
+        try loadSecret(account: legacyAccount)
+    }
+
+    func saveSecret(_ value: String, account: String) throws {
+        let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -49,7 +64,7 @@ final class KeychainStore {
         throw KeychainError.unhandledStatus(status)
     }
 
-    func loadAPIKey() throws -> String {
+    func loadSecret(account: String) throws -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -77,5 +92,18 @@ final class KeychainStore {
         }
 
         return value
+    }
+
+    func deleteSecret(account: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unhandledStatus(status)
+        }
     }
 }

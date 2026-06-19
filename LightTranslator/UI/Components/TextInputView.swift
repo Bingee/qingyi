@@ -105,6 +105,12 @@ private final class KeyHandlingTextView: NSTextView {
 
         if (event.keyCode == 36 || event.keyCode == 76),
            !event.modifierFlags.contains(.shift) {
+            if hasMarkedText() {
+                super.keyDown(with: event)
+                onVisibleContentChange?(self)
+                return
+            }
+
             onSubmit?()
             return
         }
