@@ -2,6 +2,8 @@
 
 轻译是一个 macOS 菜单栏 AI 翻译 App。当前 MVP 支持菜单栏常驻、全局快捷键唤起翻译浮窗、读取剪贴板、配置 OpenAI-compatible API、自动判断中英文方向并复制译文。
 
+官方网站：https://bingee.github.io/qingyi/
+
 ## 开发环境
 
 - macOS beta
