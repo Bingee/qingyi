@@ -92,11 +92,16 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 
 .github-link svg {
-  width: 16px;
-  height: 16px;
+  display: block;
+  flex: 0 0 16px;
+  width: 16px !important;
+  height: 16px !important;
+  max-width: 16px;
+  max-height: 16px;
 }
 
 .section-shell {
