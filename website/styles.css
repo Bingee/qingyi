@@ -756,9 +756,12 @@ p {
   }
 
   h1 {
-    max-width: 8.4em;
-    font-size: clamp(38px, 12vw, 46px);
-    line-height: 1.06;
+    max-width: none;
+    font-size: clamp(24px, 7.2vw, 32px);
+    line-height: 1.16;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+    overflow-wrap: normal;
   }
 
   .hero-lede {
