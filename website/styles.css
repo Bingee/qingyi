@@ -88,6 +88,17 @@ a {
   font-weight: 600;
 }
 
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.github-link svg {
+  width: 16px;
+  height: 16px;
+}
+
 .section-shell {
   width: min(var(--content), calc(100% - 32px));
   margin: 0 auto;
