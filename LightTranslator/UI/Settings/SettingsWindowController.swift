@@ -18,7 +18,7 @@ final class SettingsWindowController {
             viewModel.selectedSection = section
         }
         NSApp.activate(ignoringOtherApps: true)
-        window.center()
+        position(window)
         window.makeKeyAndOrderFront(nil)
     }
 
@@ -39,5 +39,24 @@ final class SettingsWindowController {
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: view)
         return window
+    }
+
+    private func position(_ window: NSWindow) {
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouseLocation) } ?? NSScreen.main
+
+        guard let screen else {
+            window.center()
+            return
+        }
+
+        let visibleFrame = screen.visibleFrame
+        let frame = window.frame
+        window.setFrameOrigin(
+            NSPoint(
+                x: visibleFrame.midX - frame.width / 2,
+                y: visibleFrame.maxY - visibleFrame.height * 0.10 - frame.height
+            )
+        )
     }
 }

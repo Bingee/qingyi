@@ -5,6 +5,7 @@ struct TextInputView: NSViewRepresentable {
     @Binding var text: String
     @Binding var hasVisibleContent: Bool
     let onSubmit: () -> Void
+    let onPaste: () -> Void
     let onCancel: () -> Void
     var fontSize: CGFloat = 15
     var textColor: NSColor = .labelColor
@@ -33,6 +34,7 @@ struct TextInputView: NSViewRepresentable {
         textView.drawsBackground = false
         textView.allowsUndo = true
         textView.onSubmit = onSubmit
+        textView.onPaste = onPaste
         textView.onCancel = onCancel
         textView.onVisibleContentChange = context.coordinator.updateVisibleContent
         textView.string = text
@@ -51,6 +53,7 @@ struct TextInputView: NSViewRepresentable {
         }
 
         textView.onSubmit = onSubmit
+        textView.onPaste = onPaste
         textView.onCancel = onCancel
         textView.onVisibleContentChange = context.coordinator.updateVisibleContent
         textView.font = .systemFont(ofSize: fontSize, weight: .medium)
@@ -94,6 +97,7 @@ struct TextInputView: NSViewRepresentable {
 
 private final class KeyHandlingTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onPaste: (() -> Void)?
     var onCancel: (() -> Void)?
     var onVisibleContentChange: ((KeyHandlingTextView) -> Void)?
 
@@ -111,12 +115,26 @@ private final class KeyHandlingTextView: NSTextView {
                 return
             }
 
-            onSubmit?()
+            // NSTextView delivers its delegate update asynchronously into the
+            // SwiftUI binding. Queue submission to the next main-loop turn so
+            // Return always translates the text that is visibly in the editor.
+            DispatchQueue.main.async { [weak self] in
+                self?.onSubmit?()
+            }
             return
         }
 
         super.keyDown(with: event)
         onVisibleContentChange?(self)
+    }
+
+    override func paste(_ sender: Any?) {
+        super.paste(sender)
+
+        // Let NSTextView finish notifying its delegate before reading the SwiftUI binding.
+        DispatchQueue.main.async { [weak self] in
+            self?.onPaste?()
+        }
     }
 
     override func setMarkedText(

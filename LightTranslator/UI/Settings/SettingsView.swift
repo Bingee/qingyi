@@ -130,7 +130,8 @@ struct SettingsView: View {
                             )
 
                             if viewModel.isModelEnabled(model),
-                               model.id != TranslationModel.volcengineTranslateID {
+                               model.id != TranslationModel.volcengineTranslateID,
+                               model.id != TranslationModel.appleLocalTranslationID {
                                 customModelCredentialForm(for: model)
                             }
                         }
@@ -564,7 +565,7 @@ struct SettingsView: View {
                     Text("版本")
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("1.0")
+                    Text("1.5")
                         .font(.body.weight(.medium))
                 }
 

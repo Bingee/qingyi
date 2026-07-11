@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onQuit: { NSApp.terminate(nil) }
     )
     private lazy var hotkeyManager = GlobalHotkeyManager(settingsStore: settingsStore) { [weak self] in
-        self?.showTranslator()
+        self?.showTranslator(fromHotkey: true)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -69,8 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func showTranslator() {
-        translationWindowController.show()
+    private func showTranslator(fromHotkey: Bool = false) {
+        translationWindowController.show(resetForHotkey: fromHotkey)
     }
 
     private func showSettings() {

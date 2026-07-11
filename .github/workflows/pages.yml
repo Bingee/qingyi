@@ -5,7 +5,7 @@ name: Deploy website to GitHub Pages
     branches:
       - main
       - master
-      - "release/v0.1.0"
+      - "v1.5"
     paths:
       - "website/**"
       - ".github/workflows/pages.yml"

@@ -21,6 +21,8 @@ final class MenuBarController {
         if let button = statusItem.button {
             button.image = menuBarImage()
             button.image?.isTemplate = true
+            button.imageScaling = .scaleProportionallyDown
+            button.imagePosition = .imageOnly
             button.title = ""
             button.toolTip = "轻译"
         }
@@ -65,8 +67,11 @@ final class MenuBarController {
     }
 
     private func menuItemImage(_ symbolName: String) -> NSImage? {
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
         image?.isTemplate = true
+        image?.size = NSSize(width: 16, height: 16)
         return image
     }
 }

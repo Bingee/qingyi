@@ -10,12 +10,14 @@ final class TranslationWindowController {
         self.viewModel = viewModel
     }
 
-    func show() {
+    func show(resetForHotkey: Bool = false) {
         let wasVisible = panel?.isVisible == true
         let panel = panel ?? makePanel()
         self.panel = panel
 
-        if !wasVisible {
+        if resetForHotkey {
+            viewModel.prepareForHotkeyOpen()
+        } else if !wasVisible {
             viewModel.prepareForOpen()
         }
 
@@ -104,10 +106,9 @@ final class TranslationWindowController {
 
         let visibleFrame = screen.visibleFrame
         let frame = panel.frame
-        let topOffset = visibleFrame.height * 0.10
         let origin = NSPoint(
             x: visibleFrame.midX - frame.width / 2,
-            y: visibleFrame.maxY - topOffset - frame.height
+            y: visibleFrame.maxY - visibleFrame.height * 0.10 - frame.height
         )
         panel.setFrameOrigin(origin)
     }

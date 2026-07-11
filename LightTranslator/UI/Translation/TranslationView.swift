@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Translation
 
 struct TranslationView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -22,6 +23,15 @@ struct TranslationView: View {
     private let resultCardBottomPadding: CGFloat = 10
 
     var body: some View {
+        if #available(macOS 15.0, *) {
+            translationContent
+                .modifier(AppleLocalTranslationTaskModifier(viewModel: viewModel))
+        } else {
+            translationContent
+        }
+    }
+
+    private var translationContent: some View {
         VStack(spacing: 12) {
             inputBlock
             languageBar
@@ -72,6 +82,7 @@ struct TranslationView: View {
                 text: $viewModel.sourceText,
                 hasVisibleContent: $inputHasVisibleContent,
                 onSubmit: viewModel.translate,
+                onPaste: viewModel.translate,
                 onCancel: onClose,
                 fontSize: 16,
                 textColor: inputTextColor,
@@ -394,6 +405,10 @@ struct TranslationView: View {
     }
 
     private var visibleResultModels: [TranslationModel] {
+        if viewModel.status.isTranslating, !viewModel.enabledModels.isEmpty {
+            return viewModel.enabledModels
+        }
+
         if !viewModel.translationResults.isEmpty {
             return viewModel.translationResults.map(\.model)
         }
@@ -528,6 +543,48 @@ struct TranslationView: View {
             : NSColor(calibratedRed: 51 / 255, green: 51 / 255, blue: 51 / 255, alpha: 1)
     }
 
+}
+
+/// `translationTask` is intentionally owned by the SwiftUI view. Apple tracks
+/// configuration changes through view state; keeping it in the view model can
+/// leave a new request without a running TranslationSession.
+@available(macOS 15.0, *)
+private struct AppleLocalTranslationTaskModifier: ViewModifier {
+    @ObservedObject var viewModel: TranslationViewModel
+    @State private var configuration: TranslationSession.Configuration?
+    @State private var activeRequest: AppleLocalTranslationRequest?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                updateConfiguration(for: viewModel.appleTranslationRequest)
+            }
+            .onChange(of: viewModel.appleTranslationRequest) { _, request in
+                updateConfiguration(for: request)
+            }
+            .translationTask(configuration) { session in
+                guard let activeRequest else {
+                    return
+                }
+                await viewModel.translateWithAppleLocal(session, request: activeRequest)
+            }
+    }
+
+    private func updateConfiguration(for request: AppleLocalTranslationRequest?) {
+        activeRequest = request
+
+        guard let request else {
+            configuration = nil
+            return
+        }
+
+        // A fresh configuration is deliberate: it retriggers translation even
+        // when the source and target languages are unchanged but the text differs.
+        configuration = TranslationSession.Configuration(
+            source: request.sourceLanguageIdentifier.map(Locale.Language.init(identifier:)),
+            target: request.targetLanguageIdentifier.map(Locale.Language.init(identifier:))
+        )
+    }
 }
 
 private struct BlinkingInsertionCursor: View {

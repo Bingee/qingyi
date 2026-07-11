@@ -2,6 +2,7 @@ import Foundation
 
 struct TranslationModel: Identifiable, Equatable, Hashable {
     static let volcengineTranslateID = "volcengine-translate"
+    static let appleLocalTranslationID = "apple-local-translation"
     static let customOpenAICompatibleID = "custom-openai-compatible"
 
     let id: String
@@ -34,6 +35,13 @@ struct TranslationModel: Identifiable, Equatable, Hashable {
             description: "免费可用，适合日常快速翻译。",
             systemImage: "flame",
             assetName: "VolcengineModelIcon"
+        ),
+        TranslationModel(
+            id: appleLocalTranslationID,
+            displayName: "Apple词典",
+            description: "无需 API Key，macOS 15+ 下载语言包后可离线使用。",
+            systemImage: "lock.shield",
+            assetName: "AppleLocalTranslationIcon"
         ),
         TranslationModel(
             id: "gpt-5.4-nano",

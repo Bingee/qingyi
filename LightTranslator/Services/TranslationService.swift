@@ -50,7 +50,9 @@ final class TranslationService {
         targetLanguage: LanguageOption
     ) async throws -> [ModelTranslationResult] {
         let settings = settingsStore.load()
-        let modelIDs = settings.enabledModelIDs
+        let modelIDs = settings.enabledModelIDs.filter {
+            $0 != TranslationModel.appleLocalTranslationID
+        }
 
         guard !modelIDs.isEmpty else {
             throw TranslationServiceError.noSelectedModel

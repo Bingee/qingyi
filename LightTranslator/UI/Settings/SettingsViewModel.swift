@@ -149,8 +149,10 @@ final class SettingsViewModel: ObservableObject {
 
     func saveCustomModelCredentials(for modelID: String) async {
         let model = TranslationModel.model(for: modelID)
-        guard modelID != TranslationModel.volcengineTranslateID else {
-            customModelCredentialMessages[modelID] = "火山翻译不使用此配置"
+        guard modelID != TranslationModel.volcengineTranslateID,
+              modelID != TranslationModel.appleLocalTranslationID
+        else {
+            customModelCredentialMessages[modelID] = "该翻译引擎不使用 API 配置"
             customModelCredentialStates[modelID] = .warning
             return
         }

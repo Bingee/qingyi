@@ -16,8 +16,8 @@ targets:
     info:
       path: LightTranslator/Info.plist
       properties:
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.5"
+        CFBundleVersion: "3"
         LSMinimumSystemVersion: "14.0"
         LSUIElement: true
         NSPrincipalClass: NSApplication

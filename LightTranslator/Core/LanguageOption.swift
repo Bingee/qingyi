@@ -28,4 +28,17 @@ enum LanguageOption: String, CaseIterable, Identifiable, Codable {
             return "English"
         }
     }
+
+    /// The identifiers expected by Apple's on-device Translation framework.
+    /// `nil` lets the framework infer the source language from the text.
+    var appleLocalTranslationLanguageIdentifier: String? {
+        switch self {
+        case .auto:
+            nil
+        case .simplifiedChinese:
+            "zh-Hans"
+        case .english:
+            "en"
+        }
+    }
 }
